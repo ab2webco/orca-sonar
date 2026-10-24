@@ -1,0 +1,11 @@
+{
+  "manifestVersion": 1,
+  "id": "orca-sonar",
+  "publisher": "ab2web",
+  "name": "Sonar",
+  "version": "0.1.0",
+  "description": "Fast file and symbol lookup for agents, with an index kept in Orca's data folder and never inside the repository.",
+  "engines": { "orca": ">=1.4.0" },
+  "pluginApi": 1,
+  "capabilities": []
+}
