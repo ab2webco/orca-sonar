@@ -132,7 +132,7 @@ test('an incremental re-index after an edit finds the new text and changes nothi
   writeFileSync(editedFile, 'export function greet() {\n  return "bonjour"\n}\n')
   const found = await run(worktree, ['find', 'bonjour', '--json'])
 
-  assert.deepEqual(JSON.parse(found.stdout).results, [
+  assert.deepEqual((JSON.parse(found.stdout) as { results: unknown }).results, [
     { path: 'src/greet.ts', line: 2, text: '  return "bonjour"' }
   ])
   assert.equal(status(worktree), beforeWorktree)
