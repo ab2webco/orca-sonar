@@ -1,6 +1,6 @@
 import { resolve } from 'node:path'
 import { indexFilePath, resolveUserDataDir, type Environment } from '../core/index-location.ts'
-import { readIndexStatus } from '../core/index-status.ts'
+import { readIndexStatus, type IndexStatus } from '../core/index-status.ts'
 import { openIndex, type IndexStore } from '../core/index-store.ts'
 import { resolveLocale, type Locale } from '../core/locale.ts'
 import { readPreferences } from '../core/preferences.ts'
@@ -23,6 +23,8 @@ export interface CliContext {
   readonly home: string
   readonly cwd: string
   readonly systemLocale: string
+  /** Standard input, read whole; only `status --stdin` asks for it. */
+  readonly stdin?: () => Promise<string>
   /** Epoch milliseconds; defaults to the system clock. */
   readonly now?: () => number
   readonly stdout: (text: string) => void
@@ -92,6 +94,34 @@ export async function runCli(argv: readonly string[], context: CliContext): Prom
     return EXIT_OK
   }
 
+  if (invocation.command === 'status' && invocation.stdin) {
+    const roots = (context.stdin ? await context.stdin() : '')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+    const workspaces = await Promise.all(roots.map((root) => statusOf(root, userDataDir)))
+    const lines = workspaces.map((entry) =>
+      'error' in entry
+        ? `${entry.root}: ${entry.error}`
+        : entry.exists
+          ? say('status', {
+              root: entry.root,
+              files: entry.files,
+              symbols: entry.symbols,
+              lastIndexedAt: entry.lastIndexedAt ?? say('neverIndexed'),
+              size: entry.sizeBytes,
+              path: entry.indexPath
+            })
+          : say('statusMissing', { root: entry.root })
+    )
+    context.stdout(
+      invocation.json
+        ? `${JSON.stringify({ command: 'status', workspaces }, null, 2)}\n`
+        : `${lines.join('\n')}\n`
+    )
+    return EXIT_OK
+  }
+
   try {
     const workspace = await resolveWorkspace(resolve(context.cwd, invocation.root ?? '.'))
     const indexPath = indexFilePath({
@@ -120,6 +150,24 @@ export async function runCli(argv: readonly string[], context: CliContext): Prom
     const key: MessageKey = /fts5/i.test(message) ? 'fts5Missing' : 'failed'
     context.stderr(`${say(key, { message })}\n`)
     return EXIT_FAILURE
+  }
+}
+
+type RootStatus =
+  ({ readonly root: string } & IndexStatus) | { readonly root: string; readonly error: string }
+
+/** One root's index status; a root that cannot be resolved is reported, not thrown. */
+async function statusOf(root: string, userDataDir: string): Promise<RootStatus> {
+  try {
+    const workspace = await resolveWorkspace(root)
+    const indexPath = indexFilePath({
+      userDataDir,
+      repoId: workspace.repoId,
+      rootKey: workspace.rootKey
+    })
+    return { root, ...readIndexStatus(indexPath) }
+  } catch (error) {
+    return { root, error: error instanceof Error ? error.message : String(error) }
   }
 }
 

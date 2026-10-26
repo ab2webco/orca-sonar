@@ -18,6 +18,7 @@ const EN = {
     '  --limit <n>        Maximum results (default: 20)',
     '  --json             Print machine-readable output',
     '  --warmup           For index: skip when the owner switched the warm-up off',
+    '  --stdin            For status: read one workspace root per line from stdin',
     '  -h, --help         Show this help'
   ].join('\n'),
   unknownCommand: 'Unknown command "{command}". Run with --help to see the commands.',
@@ -59,6 +60,7 @@ const ES: Record<MessageKey, string> = {
     '  --limit <n>        Máximo de resultados (por defecto: 20)',
     '  --json             Muestra salida legible por máquinas',
     '  --warmup           Para index: no hace nada si el precalentamiento está desactivado',
+    '  --stdin            Para status: lee una raíz por línea desde la entrada estándar',
     '  -h, --help         Muestra esta ayuda'
   ].join('\n'),
   unknownCommand: 'Comando desconocido "{command}". Usa --help para ver los comandos.',

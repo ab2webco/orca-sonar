@@ -1,0 +1,119 @@
+import { execFile, type ExecFileException } from 'node:child_process'
+
+export type RunResult =
+  | {
+      readonly kind: 'exited'
+      readonly code: number
+      readonly stdout: string
+      readonly stderr: string
+    }
+  | { readonly kind: 'not-found' }
+
+export interface RunOptions {
+  readonly env: Readonly<Record<string, string | undefined>>
+  readonly timeoutMs: number
+  /** Written to the program's standard input, which is then closed. */
+  readonly input?: string
+}
+
+/** Runs a program with argv (never a shell). `not-found` means it is not on PATH. */
+export type Runner = (
+  command: string,
+  args: readonly string[],
+  options: RunOptions
+) => Promise<RunResult>
+
+const MAX_OUTPUT_BYTES = 16 * 1024 * 1024
+
+/** cmd.exe's exit code when the program it was asked to run does not exist. */
+const CMD_NOT_FOUND = 9009
+
+/** Arguments cmd.exe passes through untouched: no quotes, spaces or metacharacters. */
+const PLAIN_ARGUMENT = /^[\w./:=-]+$/
+
+export interface Invocation {
+  readonly command: string
+  readonly args: readonly string[]
+}
+
+/**
+ * On Windows `orca` is a command script, which Node only runs through cmd.exe.
+ * That route is taken only for plain, fixed arguments; anything else returns
+ * null so a path or a name can never be read by cmd.exe as syntax. `node` is an
+ * executable and runs directly.
+ */
+export function windowsInvocation(
+  command: string,
+  args: readonly string[],
+  comspec: string
+): Invocation | null {
+  if (command === 'node' || /\.exe$/i.test(command)) {
+    return { command, args }
+  }
+  if (![command, ...args].every((part) => PLAIN_ARGUMENT.test(part))) {
+    return null
+  }
+  return { command: comspec, args: ['/d', '/s', '/c', command, ...args] }
+}
+
+function exitCode(error: ExecFileException): number {
+  return typeof error.code === 'number' ? error.code : 1
+}
+
+/** Runs programs with argv, never through a shell, except cmd.exe for Windows command scripts. */
+export function createProcessRunner(platform: NodeJS.Platform): Runner {
+  return (command, args, options) => {
+    const invocation =
+      platform === 'win32'
+        ? windowsInvocation(command, args, options.env.COMSPEC ?? 'cmd.exe')
+        : { command, args }
+    if (invocation === null) {
+      return Promise.resolve({
+        kind: 'exited',
+        code: 1,
+        stdout: '',
+        stderr: `refused to pass unusual arguments to ${command} through cmd.exe`
+      })
+    }
+    return new Promise<RunResult>((resolve) => {
+      const child = execFile(
+        invocation.command,
+        [...invocation.args],
+        {
+          env: options.env,
+          timeout: options.timeoutMs,
+          maxBuffer: MAX_OUTPUT_BYTES,
+          encoding: 'utf8',
+          windowsHide: true
+        },
+        (error, stdout, stderr) => {
+          if (error === null) {
+            resolve({ kind: 'exited', code: 0, stdout, stderr })
+            return
+          }
+          if (error.code === 'ENOENT') {
+            resolve({ kind: 'not-found' })
+            return
+          }
+          if (error.killed) {
+            resolve({
+              kind: 'exited',
+              code: 1,
+              stdout,
+              stderr: `${command} timed out after ${String(options.timeoutMs)} ms\n${stderr}`
+            })
+            return
+          }
+          const code = exitCode(error)
+          if (platform === 'win32' && code === CMD_NOT_FOUND && invocation.command !== command) {
+            resolve({ kind: 'not-found' })
+            return
+          }
+          resolve({ kind: 'exited', code, stdout, stderr })
+        }
+      )
+      child.stdin?.on('error', () => undefined)
+      child.stdin?.end(options.input ?? '')
+    })
+  }
+}
