@@ -98,7 +98,9 @@ node bin/orca-sonar.ts usage             # how agents used Sonar in the last 30 
 Options: `--root <path>` (default: current folder), `--limit <n>` (default 20),
 `--json`, `--warmup` (for `index`: skip when the background build is switched
 off), `--stdin` (for `status`: one workspace root per line), `-h`/`--help`.
-Messages follow Orca's language setting.
+Orca's own background build runs `index` with `ORCA_SONAR_WARMUP=1` in the
+environment, which works like `--warmup`. Messages follow Orca's language
+setting.
 
 ## What gets indexed
 
