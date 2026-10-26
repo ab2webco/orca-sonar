@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { DatabaseSync, type SQLInputValue } from 'node:sqlite'
+import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite'
 
 export const SCHEMA_VERSION = 1
 
@@ -37,6 +37,9 @@ export type Row = Record<string, SQLInputValue>
 export interface IndexStore {
   exec(sql: string): void
   all(sql: string, params?: readonly SQLInputValue[]): Row[]
+  /** Runs one statement and returns the rowid of the last inserted row. */
+  run(sql: string, params?: readonly SQLInputValue[]): number
+  transaction(work: () => void): void
   schemaVersion(): number
   close(): void
 }
@@ -51,20 +54,50 @@ export function openIndex(path: string): IndexStore {
   db.exec('PRAGMA busy_timeout = 2000; PRAGMA journal_mode = WAL;')
   db.exec(SCHEMA)
 
+  const statements = new Map<string, StatementSync>()
+  let inTransaction = false
+  const statement = (sql: string): StatementSync => {
+    const cached = statements.get(sql)
+    if (cached) {
+      return cached
+    }
+    const prepared = db.prepare(sql)
+    statements.set(sql, prepared)
+    return prepared
+  }
+
   return {
     exec: (sql) => {
       db.exec(sql)
     },
     all: (sql, params = []) =>
-      db
-        .prepare(sql)
+      statement(sql)
         .all(...params)
         .map((row) => ({ ...row })),
+    run: (sql, params = []) => Number(statement(sql).run(...params).lastInsertRowid),
+    transaction: (work) => {
+      if (inTransaction) {
+        work()
+        return
+      }
+      inTransaction = true
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        work()
+        db.exec('COMMIT')
+      } catch (error) {
+        db.exec('ROLLBACK')
+        throw error
+      } finally {
+        inTransaction = false
+      }
+    },
     schemaVersion: () => {
-      const [row] = db.prepare('PRAGMA user_version').all()
+      const [row] = statement('PRAGMA user_version').all()
       return Number(row?.user_version ?? 0)
     },
     close: () => {
+      statements.clear()
       db.close()
     }
   }
