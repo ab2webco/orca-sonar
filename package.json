@@ -12,7 +12,8 @@
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
-    "test": "node --test \"test/**/*.test.ts\""
+    "test": "node --test \"test/**/*.test.ts\"",
+    "screenshots": "node scripts/screenshots.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
