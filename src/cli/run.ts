@@ -52,11 +52,9 @@ export async function runCli(argv: readonly string[], context: CliContext): Prom
     context.stderr(`${say('agentsOff')}\n`)
     return EXIT_FAILURE
   }
-  if (
-    invocation.command === 'index' &&
-    invocation.warmup &&
-    !(preferences.warmup && preferences.agents)
-  ) {
+  // Orca's background warm-up sets ORCA_SONAR_WARMUP=1; --warmup does the same by hand.
+  const warmup = invocation.warmup || context.env.ORCA_SONAR_WARMUP === '1'
+  if (invocation.command === 'index' && warmup && !(preferences.warmup && preferences.agents)) {
     context.stdout(
       invocation.json
         ? `${JSON.stringify({ command: 'index', skipped: 'warmup-off' }, null, 2)}\n`

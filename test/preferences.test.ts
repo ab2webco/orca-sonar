@@ -38,12 +38,13 @@ function store(preferences: unknown): void {
 
 async function run(
   args: readonly string[],
-  systemLocale = 'en-US'
+  systemLocale = 'en-US',
+  extraEnv: Readonly<Record<string, string>> = {}
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   let stdout = ''
   let stderr = ''
   const context: CliContext = {
-    env: { ORCA_USER_DATA_PATH: userData },
+    env: { ORCA_USER_DATA_PATH: userData, ...extraEnv },
     platform: process.platform,
     home: base,
     cwd: workspace,
@@ -140,4 +141,24 @@ test('index --warmup indexes when both switches are on', async () => {
 
   assert.equal(result.code, 0)
   assert.equal((JSON.parse(result.stdout) as { indexed: number }).indexed, 1)
+})
+
+test('Orca marks its warm-up with ORCA_SONAR_WARMUP=1, which skips like --warmup', async () => {
+  store({ warmup: false })
+
+  const skipped = await run(['index', '--json'], 'en-US', { ORCA_SONAR_WARMUP: '1' })
+
+  assert.equal(skipped.code, 0)
+  assert.deepEqual(JSON.parse(skipped.stdout), { command: 'index', skipped: 'warmup-off' })
+  assert.equal(existsSync(join(pluginDataDir(userData), 'index')), false)
+})
+
+test('ORCA_SONAR_WARMUP=1 indexes when both switches are on, and other values are not a warm-up', async () => {
+  const warm = await run(['index', '--json'], 'en-US', { ORCA_SONAR_WARMUP: '1' })
+  assert.equal((JSON.parse(warm.stdout) as { indexed: number }).indexed, 1)
+
+  store({ warmup: false })
+  const manual = await run(['index', '--json'], 'en-US', { ORCA_SONAR_WARMUP: '0' })
+  assert.equal(manual.code, 0)
+  assert.equal('skipped' in (JSON.parse(manual.stdout) as Record<string, unknown>), false)
 })
