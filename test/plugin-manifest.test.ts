@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 import { DEFAULT_PREFERENCES } from '../src/core/preferences.ts'
+import { BYTES_PER_TOKEN, GREP_LINE_CAP } from '../src/core/savings.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -28,7 +29,7 @@ test('orca-plugin.json declares the reserved ab2web.orca-sonar identity', () => 
   assert.deepEqual(plugin.engines, { orca: '>=1.4.160' })
 })
 
-test('orca-plugin.json wires the worker, the settings panel, its command and events', () => {
+test('orca-plugin.json wires the worker, both panels, the command and the events', () => {
   const plugin = manifest()
 
   assert.equal(plugin.main, 'main.mjs')
@@ -40,6 +41,13 @@ test('orca-plugin.json wires the worker, the settings panel, its command and eve
         icon: 'icons/sonar.svg',
         entry: 'panels/settings.html',
         surface: 'settings'
+      },
+      {
+        id: 'sonar-usage',
+        title: 'Sonar',
+        icon: 'icons/sonar.svg',
+        entry: 'panels/usage.html',
+        surface: 'nav'
       }
     ],
     commands: [{ id: 'sonar.refresh', title: 'Sonar: Refresh' }],
@@ -79,4 +87,12 @@ test('the repository ships an MIT license held by Ab2Web', () => {
 
   assert.match(license, /^MIT License/)
   assert.match(license, /Copyright \(c\) \d{4} Ab2Web/)
+})
+
+test('the statistics panel states the same saving formula the CLI computes', () => {
+  const panel = readFileSync(join(root, 'panels', 'usage.html'), 'utf8')
+
+  assert.match(panel, new RegExp(`up to ${GREP_LINE_CAP.toLocaleString('en-US')} lines`))
+  assert.match(panel, new RegExp(`hasta ${GREP_LINE_CAP.toLocaleString('es-ES')} líneas`))
+  assert.equal(panel.split(`÷ ${String(BYTES_PER_TOKEN)} bytes`).length - 1, 2)
 })
