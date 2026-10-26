@@ -9,6 +9,7 @@ const EN = {
     '  install            Create the index folder for this workspace',
     '  index              Bring the index up to date',
     '  status             Show what the index holds, without changing it',
+    '  usage              Show how agents used Sonar in the last 30 days',
     '  find <words...>    Find lines that contain every word',
     '  symbol <name>      Find declarations with this exact name',
     '',
@@ -30,6 +31,8 @@ const EN = {
     'Index for {root}: {files} files, {symbols} symbols, last indexed {lastIndexedAt}, {size} bytes at {path}',
   statusMissing: 'No index yet for {root}. Run "orca-sonar index" to build it.',
   neverIndexed: 'unknown',
+  usageSummary:
+    '{queries} queries in the last 30 days ({find} find, {symbol} symbol), {results} results, {averageMs} ms on average. Estimated saving versus grep: {savedTokens} tokens ({savedBytes} bytes).',
   agentsOff:
     'Sonar is turned off for agents in Orca (Settings, Plugins, Sonar). Search with rg or grep instead.',
   warmupSkipped: 'Warm-up skipped: it is switched off in Sonar settings.',
@@ -47,6 +50,7 @@ const ES: Record<MessageKey, string> = {
     '  install            Crea la carpeta de índice de este espacio de trabajo',
     '  index              Actualiza el índice',
     '  status             Muestra qué contiene el índice, sin modificarlo',
+    '  usage              Muestra cómo usaron Sonar los agentes en los últimos 30 días',
     '  find <palabras...> Busca líneas que contengan todas las palabras',
     '  symbol <nombre>    Busca declaraciones con este nombre exacto',
     '',
@@ -68,6 +72,8 @@ const ES: Record<MessageKey, string> = {
     'Índice de {root}: {files} archivos, {symbols} símbolos, última indexación {lastIndexedAt}, {size} bytes en {path}',
   statusMissing: 'Aún no hay índice para {root}. Ejecuta "orca-sonar index" para crearlo.',
   neverIndexed: 'desconocida',
+  usageSummary:
+    '{queries} consultas en los últimos 30 días ({find} find, {symbol} symbol), {results} resultados, {averageMs} ms en promedio. Ahorro estimado frente a grep: {savedTokens} tokens ({savedBytes} bytes).',
   agentsOff:
     'Sonar está desactivado para los agentes en Orca (Ajustes, Plugins, Sonar). Busca con rg o grep.',
   warmupSkipped: 'Precalentamiento omitido: está desactivado en los ajustes de Sonar.',
