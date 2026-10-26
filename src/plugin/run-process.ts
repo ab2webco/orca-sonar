@@ -1,4 +1,6 @@
 import { execFile, type ExecFileException } from 'node:child_process'
+import { statSync } from 'node:fs'
+import { join } from 'node:path'
 
 export type RunResult =
   | {
@@ -25,8 +27,8 @@ export type Runner = (
 
 const MAX_OUTPUT_BYTES = 16 * 1024 * 1024
 
-/** cmd.exe's exit code when the program it was asked to run does not exist. */
-const CMD_NOT_FOUND = 9009
+/** Windows' own default when PATHEXT is not set. */
+const DEFAULT_PATHEXT = '.COM;.EXE;.BAT;.CMD'
 
 /** Arguments cmd.exe passes through untouched: no quotes, spaces or metacharacters. */
 const PLAIN_ARGUMENT = /^[\w./:=-]+$/
@@ -56,6 +58,28 @@ export function windowsInvocation(
   return { command: comspec, args: ['/d', '/s', '/c', command, ...args] }
 }
 
+/**
+ * Where Windows would find `command` on PATH, trying each PATHEXT extension.
+ * cmd.exe reports a missing program only as a localised message, so the runner
+ * looks it up first instead of reading that message.
+ */
+export function findWindowsCommand(
+  command: string,
+  env: Readonly<Record<string, string | undefined>>
+): string | null {
+  const directories = (env.PATH ?? env.Path ?? '').split(';').filter(Boolean)
+  const extensions = (env.PATHEXT ?? DEFAULT_PATHEXT).split(';').filter(Boolean)
+  for (const directory of directories) {
+    for (const extension of extensions) {
+      const candidate = join(directory, `${command}${extension}`)
+      if (statSync(candidate, { throwIfNoEntry: false })?.isFile() === true) {
+        return candidate
+      }
+    }
+  }
+  return null
+}
+
 function exitCode(error: ExecFileException): number {
   return typeof error.code === 'number' ? error.code : 1
 }
@@ -67,6 +91,14 @@ export function createProcessRunner(platform: NodeJS.Platform): Runner {
       platform === 'win32'
         ? windowsInvocation(command, args, options.env.COMSPEC ?? 'cmd.exe')
         : { command, args }
+    if (
+      platform === 'win32' &&
+      invocation !== null &&
+      invocation.command !== command &&
+      findWindowsCommand(command, options.env) === null
+    ) {
+      return Promise.resolve({ kind: 'not-found' })
+    }
     if (invocation === null) {
       return Promise.resolve({
         kind: 'exited',
@@ -105,10 +137,6 @@ export function createProcessRunner(platform: NodeJS.Platform): Runner {
             return
           }
           const code = exitCode(error)
-          if (platform === 'win32' && code === CMD_NOT_FOUND && invocation.command !== command) {
-            resolve({ kind: 'not-found' })
-            return
-          }
           resolve({ kind: 'exited', code, stdout, stderr })
         }
       )

@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { createProcessRunner, windowsInvocation } from '../src/plugin/run-process.ts'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import {
+  createProcessRunner,
+  findWindowsCommand,
+  windowsInvocation
+} from '../src/plugin/run-process.ts'
 
 const run = createProcessRunner(process.platform)
 const env = { PATH: process.env.PATH, SYSTEMROOT: process.env.SYSTEMROOT }
@@ -57,4 +64,18 @@ test('input is written to the program on standard input', async () => {
   })
 
   assert.deepEqual(result, { kind: 'exited', code: 0, stdout: 'one\ntwo\n', stderr: '' })
+})
+
+test('on Windows a command is looked up on PATH with PATHEXT, so a missing one is not found in any language', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'orca-sonar-path-'))
+  try {
+    writeFileSync(join(dir, 'orca.CMD'), '@echo off\r\n')
+    const env = { PATH: `C:\\nothing-here;${dir}`, PATHEXT: '.COM;.EXE;.BAT;.CMD' }
+
+    assert.equal(findWindowsCommand('orca', env), join(dir, 'orca.CMD'))
+    assert.equal(findWindowsCommand('orca-sonar-no-such-program', env), null)
+    assert.equal(findWindowsCommand('orca', { PATH: dir }), join(dir, 'orca.CMD'))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
