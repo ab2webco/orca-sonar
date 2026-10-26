@@ -1,5 +1,6 @@
 import { resolve } from 'node:path'
 import { indexFilePath, resolveUserDataDir, type Environment } from '../core/index-location.ts'
+import { readIndexStatus } from '../core/index-status.ts'
 import { openIndex, type IndexStore } from '../core/index-store.ts'
 import { resolveLocale, type Locale } from '../core/locale.ts'
 import { translate, type MessageKey, type MessageValues } from '../core/messages.ts'
@@ -52,6 +53,9 @@ export async function runCli(argv: readonly string[], context: CliContext): Prom
       repoId: workspace.repoId,
       rootKey: workspace.rootKey
     })
+    if (invocation.command === 'status') {
+      return reportStatus(invocation, { workspace, indexPath, locale, context })
+    }
     const index = openIndex(indexPath)
     try {
       return await execute(invocation, { index, workspace, indexPath, locale, context })
@@ -64,6 +68,37 @@ export async function runCli(argv: readonly string[], context: CliContext): Prom
     context.stderr(`${say(key, { message })}\n`)
     return EXIT_FAILURE
   }
+}
+
+interface StatusReport {
+  readonly workspace: Workspace
+  readonly indexPath: string
+  readonly locale: Locale
+  readonly context: CliContext
+}
+
+/** Read-only: never opens the index for writing, so a missing index stays missing. */
+function reportStatus(invocation: Invocation, report: StatusReport): number {
+  const { workspace, indexPath, locale, context } = report
+  const status = readIndexStatus(indexPath)
+  if (invocation.json) {
+    context.stdout(
+      `${JSON.stringify({ command: 'status', root: workspace.root, ...status }, null, 2)}\n`
+    )
+    return EXIT_OK
+  }
+  const text = status.exists
+    ? translate(locale, 'status', {
+        root: workspace.root,
+        files: status.files,
+        symbols: status.symbols,
+        lastIndexedAt: status.lastIndexedAt ?? translate(locale, 'neverIndexed'),
+        size: status.sizeBytes,
+        path: indexPath
+      })
+    : translate(locale, 'statusMissing', { root: workspace.root })
+  context.stdout(`${text}\n`)
+  return EXIT_OK
 }
 
 interface Execution {

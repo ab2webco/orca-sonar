@@ -8,6 +8,7 @@ const EN = {
     'Commands:',
     '  install            Create the index folder for this workspace',
     '  index              Bring the index up to date',
+    '  status             Show what the index holds, without changing it',
     '  find <words...>    Find lines that contain every word',
     '  symbol <name>      Find declarations with this exact name',
     '',
@@ -24,6 +25,10 @@ const EN = {
   noMatches: 'No matches for "{query}".',
   installed: 'Index ready at {path}',
   indexed: 'Indexed {indexed} files, {unchanged} unchanged, {removed} removed.',
+  status:
+    'Index for {root}: {files} files, {symbols} symbols, last indexed {lastIndexedAt}, {size} bytes at {path}',
+  statusMissing: 'No index yet for {root}. Run "orca-sonar index" to build it.',
+  neverIndexed: 'unknown',
   fts5Missing: 'This Node.js build has no SQLite FTS5 support. Use Node.js 24 or newer.',
   failed: 'Sonar failed: {message}'
 } as const
@@ -37,6 +42,7 @@ const ES: Record<MessageKey, string> = {
     'Comandos:',
     '  install            Crea la carpeta de índice de este espacio de trabajo',
     '  index              Actualiza el índice',
+    '  status             Muestra qué contiene el índice, sin modificarlo',
     '  find <palabras...> Busca líneas que contengan todas las palabras',
     '  symbol <nombre>    Busca declaraciones con este nombre exacto',
     '',
@@ -53,6 +59,10 @@ const ES: Record<MessageKey, string> = {
   noMatches: 'Ninguna coincidencia para "{query}".',
   installed: 'Índice listo en {path}',
   indexed: 'Archivos indexados: {indexed}, sin cambios: {unchanged}, eliminados: {removed}.',
+  status:
+    'Índice de {root}: {files} archivos, {symbols} símbolos, última indexación {lastIndexedAt}, {size} bytes en {path}',
+  statusMissing: 'Aún no hay índice para {root}. Ejecuta "orca-sonar index" para crearlo.',
+  neverIndexed: 'desconocida',
   fts5Missing: 'Esta versión de Node.js no incluye SQLite FTS5. Usa Node.js 24 o más reciente.',
   failed: 'Sonar falló: {message}'
 }
