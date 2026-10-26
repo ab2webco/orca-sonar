@@ -35,12 +35,15 @@ export interface Invocation {
   readonly json: boolean
   readonly root: string | undefined
   readonly limit: number | undefined
+  /** `index` was started by Orca's background warm-up, which the owner can switch off. */
+  readonly warmup: boolean
 }
 
 const OPTIONS = {
   json: { type: 'boolean', default: false },
   root: { type: 'string' },
   limit: { type: 'string' },
+  warmup: { type: 'boolean', default: false },
   help: { type: 'boolean', short: 'h', default: false }
 } as const
 
@@ -69,7 +72,14 @@ export function parseInvocation(argv: readonly string[]): Invocation {
   const { values, positionals } = parsed
   const [first, ...rest] = positionals
   if (values.help || first === undefined) {
-    return { command: 'help', positionals: [], json: false, root: undefined, limit: undefined }
+    return {
+      command: 'help',
+      positionals: [],
+      json: false,
+      root: undefined,
+      limit: undefined,
+      warmup: false
+    }
   }
   if (!isCommand(first)) {
     throw new UsageError('unknown_command', { command: first })
@@ -86,6 +96,7 @@ export function parseInvocation(argv: readonly string[]): Invocation {
     positionals: rest,
     json: values.json,
     root: values.root,
-    limit: values.limit === undefined ? undefined : Number(values.limit)
+    limit: values.limit === undefined ? undefined : Number(values.limit),
+    warmup: values.warmup
   }
 }
