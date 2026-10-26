@@ -40,6 +40,11 @@
       {
         "on": "worktree.created"
       }
+    ],
+    "skills": [
+      {
+        "path": "skills/orca-sonar"
+      }
     ]
   },
   "capabilities": [
@@ -54,6 +59,9 @@
     },
     {
       "kind": "events:subscribe"
+    },
+    {
+      "kind": "skills:contribute"
     }
   ]
 }

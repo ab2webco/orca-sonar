@@ -29,7 +29,7 @@ test('orca-plugin.json declares the reserved ab2web.orca-sonar identity', () => 
   assert.deepEqual(plugin.engines, { orca: '>=1.4.160' })
 })
 
-test('orca-plugin.json wires the worker, both panels, the command and the events', () => {
+test('orca-plugin.json wires the worker, both panels, the command, the events and the skill', () => {
   const plugin = manifest()
 
   assert.equal(plugin.main, 'main.mjs')
@@ -51,13 +51,15 @@ test('orca-plugin.json wires the worker, both panels, the command and the events
       }
     ],
     commands: [{ id: 'sonar.refresh', title: 'Sonar: Refresh' }],
-    events: [{ on: 'agent.status.changed' }, { on: 'worktree.created' }]
+    events: [{ on: 'agent.status.changed' }, { on: 'worktree.created' }],
+    skills: [{ path: 'skills/orca-sonar' }]
   })
   assert.deepEqual(plugin.capabilities, [
     { kind: 'process:spawn' },
     { kind: 'storage' },
     { kind: 'settings:own' },
-    { kind: 'events:subscribe' }
+    { kind: 'events:subscribe' },
+    { kind: 'skills:contribute' }
   ])
 })
 
@@ -66,6 +68,7 @@ test('every file the manifest points to ships with the plugin', () => {
   const paths = [
     String(plugin.main),
     'bin/orca-sonar.ts',
+    'skills/orca-sonar/SKILL.md',
     ...plugin.contributes.panels.flatMap((panel) => [panel.icon, panel.entry])
   ]
   for (const path of paths) {
@@ -80,6 +83,15 @@ test('the settings panel starts from the same switch defaults as the CLI', () =>
   assert.ok(match?.[1], 'the panel declares DEFAULT_PREFERENCES')
   const declared = JSON.parse(match[1].replace(/(\w+):/g, '"$1":')) as unknown
   assert.deepEqual(declared, DEFAULT_PREFERENCES)
+})
+
+test('the skill names itself, stays small enough for Orca to serve and tells agents what to do when Sonar is off', () => {
+  const skill = readFileSync(join(root, 'skills', 'orca-sonar', 'SKILL.md'), 'utf8')
+
+  assert.match(skill, /^---\nname: orca-sonar\ndescription: .+\n---\n/)
+  assert.ok(Buffer.byteLength(skill) < 256 * 1024)
+  assert.match(skill, /Sonar is turned off for agents/)
+  assert.match(skill, /Unknown command: sonar/)
 })
 
 test('the repository ships an MIT license held by Ab2Web', () => {
