@@ -8,7 +8,9 @@ test('reads the command, its words and the shared options', () => {
     positionals: ['parse', 'file'],
     json: true,
     root: undefined,
-    limit: 5
+    limit: 5,
+    warmup: false,
+    stdin: false
   })
 })
 
@@ -18,8 +20,14 @@ test('reads --root and defaults to no command options', () => {
     positionals: [],
     json: false,
     root: '/work/repo',
-    limit: undefined
+    limit: undefined,
+    warmup: false,
+    stdin: false
   })
+})
+
+test('reads --warmup for a background index', () => {
+  assert.equal(parseInvocation(['index', '--warmup']).warmup, true)
 })
 
 test('no arguments and --help both ask for the usage text', () => {

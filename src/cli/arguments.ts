@@ -1,7 +1,7 @@
 import { parseArgs } from 'node:util'
 import type { MessageKey, MessageValues } from '../core/messages.ts'
 
-export type Command = 'help' | 'install' | 'index' | 'status' | 'find' | 'symbol'
+export type Command = 'help' | 'install' | 'index' | 'status' | 'usage' | 'find' | 'symbol'
 
 export type UsageErrorCode =
   'unknown_command' | 'unknown_option' | 'invalid_limit' | 'query_required'
@@ -35,16 +35,22 @@ export interface Invocation {
   readonly json: boolean
   readonly root: string | undefined
   readonly limit: number | undefined
+  /** `index` was started by Orca's background warm-up, which the owner can switch off. */
+  readonly warmup: boolean
+  /** For status: read one workspace root per line from standard input. */
+  readonly stdin: boolean
 }
 
 const OPTIONS = {
   json: { type: 'boolean', default: false },
   root: { type: 'string' },
   limit: { type: 'string' },
+  warmup: { type: 'boolean', default: false },
+  stdin: { type: 'boolean', default: false },
   help: { type: 'boolean', short: 'h', default: false }
 } as const
 
-const COMMANDS: readonly Command[] = ['install', 'index', 'status', 'find', 'symbol']
+const COMMANDS: readonly Command[] = ['install', 'index', 'status', 'usage', 'find', 'symbol']
 const QUERY_COMMANDS: readonly Command[] = ['find', 'symbol']
 const WHOLE_NUMBER = /^[1-9]\d*$/
 
@@ -69,7 +75,15 @@ export function parseInvocation(argv: readonly string[]): Invocation {
   const { values, positionals } = parsed
   const [first, ...rest] = positionals
   if (values.help || first === undefined) {
-    return { command: 'help', positionals: [], json: false, root: undefined, limit: undefined }
+    return {
+      command: 'help',
+      positionals: [],
+      json: false,
+      root: undefined,
+      limit: undefined,
+      warmup: false,
+      stdin: false
+    }
   }
   if (!isCommand(first)) {
     throw new UsageError('unknown_command', { command: first })
@@ -86,6 +100,8 @@ export function parseInvocation(argv: readonly string[]): Invocation {
     positionals: rest,
     json: values.json,
     root: values.root,
-    limit: values.limit === undefined ? undefined : Number(values.limit)
+    limit: values.limit === undefined ? undefined : Number(values.limit),
+    warmup: values.warmup,
+    stdin: values.stdin
   }
 }

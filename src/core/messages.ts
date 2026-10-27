@@ -9,6 +9,7 @@ const EN = {
     '  install            Create the index folder for this workspace',
     '  index              Bring the index up to date',
     '  status             Show what the index holds, without changing it',
+    '  usage              Show how agents used Sonar in the last 30 days',
     '  find <words...>    Find lines that contain every word',
     '  symbol <name>      Find declarations with this exact name',
     '',
@@ -16,6 +17,8 @@ const EN = {
     '  --root <path>      Workspace to use (default: current folder)',
     '  --limit <n>        Maximum results (default: 20)',
     '  --json             Print machine-readable output',
+    '  --warmup           For index: skip when the owner switched the warm-up off',
+    '  --stdin            For status: read one workspace root per line from stdin',
     '  -h, --help         Show this help'
   ].join('\n'),
   unknownCommand: 'Unknown command "{command}". Run with --help to see the commands.',
@@ -29,6 +32,11 @@ const EN = {
     'Index for {root}: {files} files, {symbols} symbols, last indexed {lastIndexedAt}, {size} bytes at {path}',
   statusMissing: 'No index yet for {root}. Run "orca-sonar index" to build it.',
   neverIndexed: 'unknown',
+  usageSummary:
+    '{queries} queries in the last 30 days ({find} find, {symbol} symbol), {results} results, {averageMs} ms on average. Estimated saving versus grep: {savedTokens} tokens ({savedBytes} bytes).',
+  agentsOff:
+    'Sonar is turned off for agents in Orca (Settings, Plugins, Sonar). Search with rg or grep instead.',
+  warmupSkipped: 'Warm-up skipped: it is switched off in Sonar settings.',
   fts5Missing: 'This Node.js build has no SQLite FTS5 support. Use Node.js 24 or newer.',
   failed: 'Sonar failed: {message}'
 } as const
@@ -43,6 +51,7 @@ const ES: Record<MessageKey, string> = {
     '  install            Crea la carpeta de índice de este espacio de trabajo',
     '  index              Actualiza el índice',
     '  status             Muestra qué contiene el índice, sin modificarlo',
+    '  usage              Muestra cómo usaron Sonar los agentes en los últimos 30 días',
     '  find <palabras...> Busca líneas que contengan todas las palabras',
     '  symbol <nombre>    Busca declaraciones con este nombre exacto',
     '',
@@ -50,6 +59,8 @@ const ES: Record<MessageKey, string> = {
     '  --root <ruta>      Espacio de trabajo a usar (por defecto: carpeta actual)',
     '  --limit <n>        Máximo de resultados (por defecto: 20)',
     '  --json             Muestra salida legible por máquinas',
+    '  --warmup           Para index: no hace nada si el precalentamiento está desactivado',
+    '  --stdin            Para status: lee una raíz por línea desde la entrada estándar',
     '  -h, --help         Muestra esta ayuda'
   ].join('\n'),
   unknownCommand: 'Comando desconocido "{command}". Usa --help para ver los comandos.',
@@ -63,6 +74,11 @@ const ES: Record<MessageKey, string> = {
     'Índice de {root}: {files} archivos, {symbols} símbolos, última indexación {lastIndexedAt}, {size} bytes en {path}',
   statusMissing: 'Aún no hay índice para {root}. Ejecuta "orca-sonar index" para crearlo.',
   neverIndexed: 'desconocida',
+  usageSummary:
+    '{queries} consultas en los últimos 30 días ({find} find, {symbol} symbol), {results} resultados, {averageMs} ms en promedio. Ahorro estimado frente a grep: {savedTokens} tokens ({savedBytes} bytes).',
+  agentsOff:
+    'Sonar está desactivado para los agentes en Orca (Ajustes, Plugins, Sonar). Busca con rg o grep.',
+  warmupSkipped: 'Precalentamiento omitido: está desactivado en los ajustes de Sonar.',
   fts5Missing: 'Esta versión de Node.js no incluye SQLite FTS5. Usa Node.js 24 o más reciente.',
   failed: 'Sonar falló: {message}'
 }

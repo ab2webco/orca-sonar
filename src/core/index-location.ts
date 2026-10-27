@@ -33,6 +33,11 @@ export function resolveUserDataDir(
   return join(env.XDG_CONFIG_HOME || join(home, '.config'), 'orca')
 }
 
+/** Sonar's own folder in Orca's data folder, shared with Orca's plugin storage files. */
+export function pluginDataDir(userDataDir: string): string {
+  return join(userDataDir, 'plugins-data', PLUGIN_IDENTITY)
+}
+
 /**
  * The SQLite file for one workspace. The repo id is shared by a repository and
  * its worktrees; the root key separates the worktrees, so each keeps its own
@@ -40,9 +45,7 @@ export function resolveUserDataDir(
  */
 export function indexFilePath(location: IndexLocation): string {
   return join(
-    location.userDataDir,
-    'plugins-data',
-    PLUGIN_IDENTITY,
+    pluginDataDir(location.userDataDir),
     'index',
     location.repoId,
     `${location.rootKey}.sqlite`

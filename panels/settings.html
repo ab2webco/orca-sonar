@@ -1,0 +1,659 @@
+<!--
+  Sonar settings panel (Settings > Plugins > Sonar). Orca renders it in a
+  sandboxed frame with an opaque origin: no network, no local files, no direct
+  line to the worker. It reads what the worker publishes in plugin storage
+  (`state`, `rebuilds`) and writes only two things: the switches
+  (`preferences`, which the CLI reads on its next command) and rebuild requests
+  (`rebuild:<hash>`, attended on the worker's next wake). Orca sets the theme
+  (`html.light|dark`) and the language (`html lang`) and injects its design
+  tokens; every colour here is one of those tokens.
+-->
+<style>
+  /* Keeps the frame's own scrollbar and form controls in Orca's theme. */
+  :root {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  html,
+  body {
+    background: var(--background);
+    color: var(--foreground);
+  }
+  body {
+    margin: 0;
+    padding: 16px;
+  }
+  main {
+    max-width: 880px;
+    margin: 0 auto;
+    display: grid;
+    gap: 12px;
+  }
+  section {
+    background: var(--card);
+    color: var(--card-foreground);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 14px;
+    min-width: 0;
+  }
+  h2 {
+    margin: 0 0 4px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .hint {
+    margin: 0;
+    color: var(--muted-foreground);
+    font-size: 13px;
+    overflow-wrap: anywhere;
+  }
+  .error {
+    color: var(--destructive);
+  }
+  .switch {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 0;
+    border-top: 1px solid var(--border);
+  }
+  .switch:first-of-type {
+    border-top: 0;
+  }
+  .switch label {
+    flex: 1;
+    min-width: 0;
+    cursor: pointer;
+  }
+  .switch strong {
+    display: block;
+    font-weight: 500;
+  }
+  input[type='checkbox'][role='switch'] {
+    appearance: none;
+    flex: none;
+    width: 36px;
+    height: 20px;
+    margin: 2px 0 0;
+    border-radius: 999px;
+    background: var(--muted);
+    box-shadow: inset 0 0 0 1px var(--ring);
+    position: relative;
+    cursor: pointer;
+  }
+  input[type='checkbox'][role='switch']::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--muted-foreground);
+  }
+  input[type='checkbox'][role='switch']:checked {
+    background: var(--primary);
+    box-shadow: none;
+  }
+  input[type='checkbox'][role='switch']:checked::after {
+    transform: translateX(16px);
+    background: var(--primary-foreground);
+  }
+  input:focus-visible,
+  button:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  .saved {
+    margin: 4px 0 8px;
+  }
+  .saved:empty {
+    display: none;
+  }
+  .note {
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--muted);
+    font-size: 13px;
+  }
+  .note.error {
+    color: var(--destructive);
+  }
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    margin: 10px 0 4px;
+  }
+  .toolbar input[type='search'] {
+    flex: 1 1 200px;
+    min-width: 0;
+    font: inherit;
+    font-size: 13px;
+    padding: 6px 10px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--input);
+    background: var(--background);
+    color: var(--foreground);
+  }
+  ul.workspaces {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+  }
+  ul.workspaces li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 12px;
+    align-items: center;
+    padding: 10px 0;
+    border-top: 1px solid var(--border);
+  }
+  .name {
+    font-weight: 500;
+    overflow-wrap: anywhere;
+  }
+  .branch {
+    color: var(--muted-foreground);
+    font-weight: 400;
+  }
+  .path {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 11px;
+    color: var(--muted-foreground);
+    overflow-wrap: anywhere;
+  }
+  .facts {
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+  .facts.none {
+    color: var(--muted-foreground);
+  }
+  .row-side {
+    display: grid;
+    justify-items: end;
+    gap: 4px;
+    grid-row: span 3;
+    max-width: 200px;
+  }
+  .row-side .hint {
+    text-align: right;
+    font-size: 12px;
+  }
+  button {
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 5px 10px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: var(--secondary);
+    color: var(--secondary-foreground);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  button:disabled {
+    color: var(--muted-foreground);
+    cursor: default;
+  }
+  @media (max-width: 480px) {
+    ul.workspaces li {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .row-side {
+      grid-row: auto;
+      order: 1;
+      justify-items: start;
+      max-width: none;
+    }
+    .row-side .hint {
+      text-align: left;
+    }
+  }
+  [hidden] {
+    display: none !important;
+  }
+</style>
+
+<main>
+  <section>
+    <h2 id="switches-title"></h2>
+    <div class="switch">
+      <label for="agents"
+        ><strong id="agents-label"></strong><span class="hint" id="agents-help"></span
+      ></label>
+      <input type="checkbox" role="switch" id="agents" disabled />
+    </div>
+    <div class="switch">
+      <label for="warmup"
+        ><strong id="warmup-label"></strong><span class="hint" id="warmup-help"></span
+      ></label>
+      <input type="checkbox" role="switch" id="warmup" disabled />
+    </div>
+    <p class="hint saved" id="saved" aria-live="polite"></p>
+    <p class="note" id="sonar-missing" hidden></p>
+  </section>
+
+  <section>
+    <h2 id="workspaces-title"></h2>
+    <p class="hint" id="summary" aria-live="polite"></p>
+    <p class="note" id="problem" hidden></p>
+    <div class="toolbar" id="toolbar" hidden>
+      <input type="search" id="filter" autocomplete="off" />
+    </div>
+    <ul class="workspaces" id="list"></ul>
+    <p class="hint" id="empty" hidden></p>
+  </section>
+</main>
+
+<script>
+  'use strict'
+
+  /** Must match DEFAULT_PREFERENCES in src/core/preferences.ts; a test checks it. */
+  var DEFAULT_PREFERENCES = { agents: true, warmup: true }
+
+  var TEXT = {
+    en: {
+      switchesTitle: 'Sonar for agents',
+      agents: 'Agents can use Sonar',
+      agentsHelp:
+        'When off, orca sonar find and symbol refuse and agents search with rg or grep. The indexes and these panels keep working.',
+      warmup: 'Build the index in the background',
+      warmupHelp:
+        'When on, Orca indexes a new worktree as soon as it is created, so the first search does not wait. Off while agents are off.',
+      saving: 'Saving…',
+      saved: 'Saved. The next orca sonar command follows it.',
+      saveFailed: 'Could not save: {error}',
+      sonarMissing:
+        'This Orca build does not include the orca sonar command or its warm-up yet. These switches are saved and apply as soon as it does.',
+      workspacesTitle: 'Workspaces',
+      summary: '{indexed} of {total} local workspaces have an index. Checked {when}.',
+      summaryUnknown: 'Local workspaces: {total}. Checked {when}.',
+      checkedOnly: 'Checked {when}.',
+      neverChecked:
+        'Not checked yet. Sonar checks on the next agent activity in Orca; to check now, run “Sonar: Refresh” from the command palette.',
+      orcaMissing:
+        'Sonar lists workspaces through Orca’s orca command, which is not on PATH for plugins.',
+      nodeMissing: 'Sonar needs Node.js 24 or newer on PATH to read and build indexes.',
+      error: 'Could not read the index status: {error}',
+      bridgeFailed: 'This panel could not reach Orca.',
+      filter: 'Filter by name, branch or folder',
+      noMatch: 'No workspace matches “{filter}”.',
+      none: 'Orca lists no local workspaces.',
+      facts: '{files} files · {symbols} symbols · {size} · indexed {when}',
+      noIndex: 'No index yet',
+      unknown: 'unknown',
+      rowError: 'Could not read: {error}',
+      rebuild: 'Rebuild',
+      build: 'Build index',
+      queued: 'Queued: runs on the next agent activity, or now with “Sonar: Refresh”.',
+      running: 'Rebuilding…',
+      done: 'Rebuilt {when}.',
+      failed: 'Failed: {error}',
+      bytes: ['B', 'KB', 'MB', 'GB']
+    },
+    es: {
+      switchesTitle: 'Sonar para los agentes',
+      agents: 'Los agentes pueden usar Sonar',
+      agentsHelp:
+        'Si está desactivado, orca sonar find y symbol se niegan y los agentes buscan con rg o grep. Los índices y estos paneles siguen funcionando.',
+      warmup: 'Crear el índice en segundo plano',
+      warmupHelp:
+        'Si está activado, Orca indexa cada worktree nuevo apenas se crea, así la primera búsqueda no espera. No se ejecuta mientras los agentes no puedan usar Sonar.',
+      saving: 'Guardando…',
+      saved: 'Guardado. El próximo comando orca sonar lo respeta.',
+      saveFailed: 'No se pudo guardar: {error}',
+      sonarMissing:
+        'Esta versión de Orca todavía no incluye el comando orca sonar ni su precalentamiento. Estos ajustes quedan guardados y se aplican en cuanto los incluya.',
+      workspacesTitle: 'Espacios de trabajo',
+      summary: '{indexed} de {total} espacios de trabajo locales tienen índice. Comprobado {when}.',
+      summaryUnknown: 'Espacios de trabajo locales: {total}. Comprobado {when}.',
+      checkedOnly: 'Comprobado {when}.',
+      neverChecked:
+        'Aún sin comprobar. Sonar lo comprueba con la próxima actividad de un agente en Orca; para hacerlo ya, ejecuta “Sonar: Refresh” desde la paleta de comandos.',
+      orcaMissing:
+        'Sonar lista los espacios de trabajo con el comando orca de Orca, que no está en el PATH de los plugins.',
+      nodeMissing: 'Sonar necesita Node.js 24 o más reciente en el PATH para leer y crear índices.',
+      error: 'No se pudo leer el estado de los índices: {error}',
+      bridgeFailed: 'Este panel no pudo comunicarse con Orca.',
+      filter: 'Filtrar por nombre, rama o carpeta',
+      noMatch: 'Ningún espacio de trabajo coincide con “{filter}”.',
+      none: 'Orca no lista espacios de trabajo locales.',
+      facts: '{files} archivos · {symbols} símbolos · {size} · indexado {when}',
+      noIndex: 'Aún sin índice',
+      unknown: 'desconocido',
+      rowError: 'No se pudo leer: {error}',
+      rebuild: 'Reconstruir',
+      build: 'Crear índice',
+      queued:
+        'En cola: se ejecuta con la próxima actividad de un agente, o ya con “Sonar: Refresh”.',
+      running: 'Reconstruyendo…',
+      done: 'Reconstruido {when}.',
+      failed: 'Falló: {error}',
+      bytes: ['B', 'KB', 'MB', 'GB']
+    }
+  }
+
+  var LANG = (document.documentElement.lang || navigator.language || 'en').toLowerCase()
+  var LOCALE = LANG.indexOf('es') === 0 ? 'es' : 'en'
+  var T = TEXT[LOCALE]
+  var POLL_MS = 15000
+  var REPLY_TIMEOUT_MS = 8000
+  var REQUEST_PREFIX = 'rebuild:'
+
+  function $(id) {
+    return document.getElementById(id)
+  }
+
+  function fill(text, values) {
+    return text.replace(/\{(\w+)\}/g, function (match, name) {
+      return values && values[name] !== undefined ? String(values[name]) : match
+    })
+  }
+
+  function element(tag, className, text) {
+    var node = document.createElement(tag)
+    if (className) node.className = className
+    if (text !== undefined) node.textContent = text
+    return node
+  }
+
+  // ---- bridge -------------------------------------------------------------
+
+  var pending = {}
+  var nextId = 0
+
+  window.addEventListener('message', function (event) {
+    var data = event.data
+    if (!data || data.type !== 'orca-panel-action-result' || !pending[data.requestId]) return
+    var entry = pending[data.requestId]
+    delete pending[data.requestId]
+    clearTimeout(entry.timer)
+    if (data.ok) entry.resolve(data.value)
+    else entry.reject(new Error(data.error || data.errorCode || 'failed'))
+  })
+
+  function call(action, params) {
+    return new Promise(function (resolve, reject) {
+      nextId += 1
+      var requestId = 'sonar-' + String(Date.now()) + '-' + String(nextId)
+      var timer = setTimeout(function () {
+        delete pending[requestId]
+        reject(new Error('timeout'))
+      }, REPLY_TIMEOUT_MS)
+      pending[requestId] = { resolve: resolve, reject: reject, timer: timer }
+      window.parent.postMessage(
+        { type: 'orca-panel-action', requestId: requestId, action: action, params: params || {} },
+        '*'
+      )
+    })
+  }
+
+  function readKey(key) {
+    return call('storage.get', { key: key }).then(function (result) {
+      return result && typeof result === 'object' ? result.value : null
+    })
+  }
+
+  // ---- formatting ---------------------------------------------------------
+
+  var numberFormat = new Intl.NumberFormat(LOCALE)
+  var relative = new Intl.RelativeTimeFormat(LOCALE, { numeric: 'auto' })
+  var absolute = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'medium', timeStyle: 'short' })
+
+  function when(iso) {
+    var time = Date.parse(iso)
+    if (!isFinite(time)) return T.unknown
+    var seconds = Math.round((time - Date.now()) / 1000)
+    if (Math.abs(seconds) < 60) return relative.format(seconds, 'second')
+    if (Math.abs(seconds) < 3600) return relative.format(Math.round(seconds / 60), 'minute')
+    if (Math.abs(seconds) < 86400) return relative.format(Math.round(seconds / 3600), 'hour')
+    if (Math.abs(seconds) < 7 * 86400) return relative.format(Math.round(seconds / 86400), 'day')
+    return absolute.format(time)
+  }
+
+  function bytes(count) {
+    var value = count
+    var unit = 0
+    while (value >= 1024 && unit < T.bytes.length - 1) {
+      value /= 1024
+      unit += 1
+    }
+    var digits = unit === 0 || value >= 100 ? 0 : 1
+    return (
+      new Intl.NumberFormat(LOCALE, { maximumFractionDigits: digits }).format(value) +
+      ' ' +
+      T.bytes[unit]
+    )
+  }
+
+  /** FNV-1a, so each root gets its own short request key. */
+  function hash(text) {
+    var value = 0x811c9dc5
+    for (var i = 0; i < text.length; i++) {
+      value ^= text.charCodeAt(i)
+      value = Math.imul(value, 0x01000193) >>> 0
+    }
+    return value.toString(16)
+  }
+
+  // ---- state --------------------------------------------------------------
+
+  var view = {
+    loaded: false,
+    failed: false,
+    preferences: DEFAULT_PREFERENCES,
+    state: null,
+    rebuilds: {},
+    queued: {},
+    filter: ''
+  }
+
+  function readPreferences(value) {
+    var stored = value && typeof value === 'object' ? value : {}
+    return {
+      agents: typeof stored.agents === 'boolean' ? stored.agents : DEFAULT_PREFERENCES.agents,
+      warmup: typeof stored.warmup === 'boolean' ? stored.warmup : DEFAULT_PREFERENCES.warmup
+    }
+  }
+
+  function sortWorkspaces(list) {
+    return list.slice().sort(function (a, b) {
+      var aTime = a.index && a.index.exists ? Date.parse(a.index.lastIndexedAt || '') || 1 : 0
+      var bTime = b.index && b.index.exists ? Date.parse(b.index.lastIndexedAt || '') || 1 : 0
+      if (aTime !== bTime) return bTime - aTime
+      return String(a.displayName).localeCompare(String(b.displayName), LOCALE)
+    })
+  }
+
+  function rowFor(entry) {
+    var item = element('li')
+    var name = element('div', 'name', entry.displayName)
+    if (entry.branch) name.appendChild(element('span', 'branch', ' · ' + entry.branch))
+    item.appendChild(name)
+
+    var side = element('div', 'row-side')
+    var progress = view.rebuilds[entry.root]
+    var queuedAt = view.queued[entry.root]
+    var running = progress && progress.state === 'running'
+    var isQueued = queuedAt && !(progress && Date.parse(progress.startedAt) >= queuedAt)
+    var indexed = entry.index && entry.index.exists
+    var button = element('button', '', indexed ? T.rebuild : T.build)
+    button.type = 'button'
+    var cannotBuild = view.state && view.state.problem === 'node-missing'
+    button.disabled = Boolean(isQueued || running || view.failed || cannotBuild)
+    button.addEventListener('click', function () {
+      requestRebuild(entry.root)
+    })
+    side.appendChild(button)
+    var status = ''
+    var statusClass = 'hint'
+    if (isQueued) status = T.queued
+    else if (running) status = T.running
+    else if (progress && progress.state === 'done')
+      status = fill(T.done, { when: when(progress.finishedAt || progress.startedAt) })
+    else if (progress && progress.state === 'failed') {
+      status = fill(T.failed, { error: progress.error || '' })
+      statusClass = 'hint error'
+    }
+    if (status) side.appendChild(element('p', statusClass, status))
+    item.appendChild(side)
+
+    var facts
+    if (entry.error) facts = element('div', 'facts error', fill(T.rowError, { error: entry.error }))
+    else if (indexed) {
+      facts = element(
+        'div',
+        'facts',
+        fill(T.facts, {
+          files: numberFormat.format(entry.index.files),
+          symbols: numberFormat.format(entry.index.symbols),
+          size: bytes(entry.index.sizeBytes),
+          when: entry.index.lastIndexedAt ? when(entry.index.lastIndexedAt) : T.unknown
+        })
+      )
+    } else if (!(view.state && view.state.problem)) facts = element('div', 'facts none', T.noIndex)
+    if (facts) item.appendChild(facts)
+    item.appendChild(element('div', 'path', entry.root))
+    return item
+  }
+
+  function render() {
+    var preferences = view.preferences
+    $('agents').checked = preferences.agents
+    $('warmup').checked = preferences.warmup
+    $('agents').disabled = !view.loaded || view.failed
+    $('warmup').disabled = !view.loaded || view.failed
+
+    var state = view.state
+    $('sonar-missing').hidden = !(state && state.sonarCommand === 'missing')
+
+    var problem = ''
+    if (view.failed) problem = T.bridgeFailed
+    else if (state && state.problem === 'orca-cli-missing') problem = T.orcaMissing
+    else if (state && state.problem === 'node-missing') problem = T.nodeMissing
+    else if (state && state.problem === 'error')
+      problem = fill(T.error, { error: state.error || '' })
+    $('problem').textContent = problem
+    $('problem').hidden = !problem
+    $('problem').className = 'note error'
+
+    var workspaces = state && Array.isArray(state.workspaces) ? state.workspaces : []
+    var indexed = workspaces.filter(function (entry) {
+      return entry.index && entry.index.exists
+    }).length
+    $('summary').textContent = !view.loaded
+      ? ''
+      : !state
+        ? T.neverChecked
+        : // With a problem the index counts are unknown, not zero.
+          fill(!state.problem ? T.summary : workspaces.length ? T.summaryUnknown : T.checkedOnly, {
+            indexed: numberFormat.format(indexed),
+            total: numberFormat.format(workspaces.length),
+            when: when(state.checkedAt)
+          })
+    $('toolbar').hidden = workspaces.length < 8
+
+    var needle = view.filter.trim().toLowerCase()
+    var shown = sortWorkspaces(workspaces).filter(function (entry) {
+      if (!needle) return true
+      return (
+        (entry.displayName + '\n' + entry.branch + '\n' + entry.root)
+          .toLowerCase()
+          .indexOf(needle) >= 0
+      )
+    })
+    var list = $('list')
+    list.textContent = ''
+    shown.forEach(function (entry) {
+      list.appendChild(rowFor(entry))
+    })
+    var empty = ''
+    if (state && !state.problem && workspaces.length === 0) empty = T.none
+    else if (needle && shown.length === 0) empty = fill(T.noMatch, { filter: view.filter.trim() })
+    $('empty').textContent = empty
+    $('empty').hidden = !empty
+  }
+
+  function load(withPreferences) {
+    var reads = [readKey('state'), readKey('rebuilds')]
+    if (withPreferences) reads.push(readKey('preferences'))
+    return Promise.all(reads)
+      .then(function (results) {
+        view.state = results[0] && typeof results[0] === 'object' ? results[0] : null
+        view.rebuilds = results[1] && typeof results[1] === 'object' ? results[1] : {}
+        if (withPreferences) view.preferences = readPreferences(results[2])
+        view.loaded = true
+        view.failed = false
+      })
+      .catch(function () {
+        view.failed = true
+      })
+      .then(render)
+  }
+
+  function savePreferences(next) {
+    view.preferences = next
+    $('saved').textContent = T.saving
+    $('saved').className = 'hint saved'
+    render()
+    call('storage.set', { key: 'preferences', value: next })
+      .then(function () {
+        $('saved').textContent = T.saved
+      })
+      .catch(function (error) {
+        $('saved').textContent = fill(T.saveFailed, { error: error.message })
+        $('saved').className = 'hint saved error'
+      })
+  }
+
+  function requestRebuild(root) {
+    var at = Date.now()
+    view.queued[root] = at
+    render()
+    call('storage.set', {
+      key: REQUEST_PREFIX + hash(root),
+      value: { root: root, at: new Date(at).toISOString() }
+    })
+      .catch(function () {
+        delete view.queued[root]
+        view.failed = true
+      })
+      .then(render)
+  }
+
+  $('agents').addEventListener('change', function () {
+    savePreferences({ agents: $('agents').checked, warmup: view.preferences.warmup })
+  })
+  $('warmup').addEventListener('change', function () {
+    savePreferences({ agents: view.preferences.agents, warmup: $('warmup').checked })
+  })
+  $('filter').addEventListener('input', function () {
+    view.filter = $('filter').value
+    render()
+  })
+
+  $('switches-title').textContent = T.switchesTitle
+  $('agents-label').textContent = T.agents
+  $('agents-help').textContent = T.agentsHelp
+  $('warmup-label').textContent = T.warmup
+  $('warmup-help').textContent = T.warmupHelp
+  $('sonar-missing').textContent = T.sonarMissing
+  $('workspaces-title').textContent = T.workspacesTitle
+  $('filter').placeholder = T.filter
+  $('filter').setAttribute('aria-label', T.filter)
+
+  render()
+  load(true)
+  setInterval(function () {
+    load(false)
+  }, POLL_MS)
+</script>
