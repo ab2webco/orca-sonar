@@ -37,6 +37,8 @@ const EN = {
   agentsOff:
     'Sonar is turned off for agents in Orca (Settings, Plugins, Sonar). Search with rg or grep instead.',
   warmupSkipped: 'Warm-up skipped: it is switched off in Sonar settings.',
+  refreshBusy:
+    'Another Sonar process is updating this index, so these results may miss the latest changes.',
   fts5Missing: 'This Node.js build has no SQLite FTS5 support. Use Node.js 24 or newer.',
   failed: 'Sonar failed: {message}'
 } as const
@@ -79,6 +81,8 @@ const ES: Record<MessageKey, string> = {
   agentsOff:
     'Sonar está desactivado para los agentes en Orca (Ajustes, Plugins, Sonar). Busca con rg o grep.',
   warmupSkipped: 'Precalentamiento omitido: está desactivado en los ajustes de Sonar.',
+  refreshBusy:
+    'Otro proceso de Sonar está actualizando este índice, así que estos resultados pueden no incluir los cambios más recientes.',
   fts5Missing: 'Esta versión de Node.js no incluye SQLite FTS5. Usa Node.js 24 o más reciente.',
   failed: 'Sonar falló: {message}'
 }

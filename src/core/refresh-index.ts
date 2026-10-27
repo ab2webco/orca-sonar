@@ -1,6 +1,6 @@
 import { readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { indexedFiles, removeFile, replaceFile } from './index-files.ts'
+import { indexedFiles, removeFile, replaceFile, skipFile, skippedFiles } from './index-files.ts'
 import type { IndexStore } from './index-store.ts'
 import { extractSymbols } from './symbols.ts'
 import { listWorkspaceFiles } from './file-walk.ts'
@@ -36,6 +36,7 @@ export async function refreshIndex(
   options: RefreshOptions = {}
 ): Promise<RefreshSummary> {
   const known = indexedFiles(index)
+  const skipped = skippedFiles(index)
   const present = await listWorkspaceFiles(workspace)
   const seen = new Set<string>()
   let indexed = 0
@@ -54,24 +55,24 @@ export async function refreshIndex(
       unchanged++
       continue
     }
+    const skip = skipped.get(path)
+    if (skip?.mtimeMs === stats.mtimeMs && skip.size === stats.size) {
+      continue
+    }
+    const file = { path, mtimeMs: stats.mtimeMs, size: stats.size }
     if (stats.size > MAX_FILE_BYTES) {
-      removeFile(index, path)
+      skipFile(index, file)
       continue
     }
 
     const content = readFileSync(absolute)
     if (content.subarray(0, BINARY_PROBE_BYTES).includes(0)) {
-      removeFile(index, path)
+      skipFile(index, file)
       continue
     }
 
     const lines = content.toString('utf8').split(/\r?\n/)
-    replaceFile(
-      index,
-      { path, mtimeMs: stats.mtimeMs, size: stats.size },
-      lines,
-      extractSymbols(path, lines)
-    )
+    replaceFile(index, file, lines, extractSymbols(path, lines))
     indexed++
   }
 
@@ -80,6 +81,11 @@ export async function refreshIndex(
     if (!seen.has(path)) {
       removeFile(index, path)
       removed++
+    }
+  }
+  for (const path of skipped.keys()) {
+    if (!seen.has(path)) {
+      removeFile(index, path)
     }
   }
 

@@ -5,7 +5,8 @@ import { openIndex, type IndexStore } from '../core/index-store.ts'
 import { resolveLocale, type Locale } from '../core/locale.ts'
 import { readPreferences } from '../core/preferences.ts'
 import { translate, type MessageKey, type MessageValues } from '../core/messages.ts'
-import { refreshIndex } from '../core/refresh-index.ts'
+import { refreshIndex, type RefreshSummary } from '../core/refresh-index.ts'
+import { tryRefreshLock, waitForRefreshLock } from '../core/refresh-lock.ts'
 import { grepOutputBytes, readBytes } from '../core/savings.ts'
 import { findLines, findSymbols } from '../core/search.ts'
 import { recordQuery, summarizeUsage } from '../core/usage.ts'
@@ -13,6 +14,10 @@ import { resolveWorkspace, type Workspace } from '../core/workspace.ts'
 import { parseInvocation, UsageError, type Invocation } from './arguments.ts'
 
 export const DEFAULT_LIMIT = 20
+
+/** How long `index` waits for another process to finish updating the same index. */
+export const INDEX_LOCK_WAIT_MS = 10 * 60_000
+const INDEX_LOCK_POLL_MS = 100
 
 /** Days the `usage` command summarises. */
 export const USAGE_WINDOW_DAYS = 30
@@ -227,7 +232,16 @@ async function execute(invocation: Invocation, execution: Execution): Promise<nu
   }
 
   if (invocation.command === 'index') {
-    const summary = await refreshIndex(index, workspace)
+    const lock = await waitForRefreshLock(indexPath, {
+      timeoutMs: INDEX_LOCK_WAIT_MS,
+      pollMs: INDEX_LOCK_POLL_MS
+    })
+    let summary: RefreshSummary
+    try {
+      summary = await refreshIndex(index, workspace)
+    } finally {
+      lock.release()
+    }
     emit(
       { command: 'index', ...summary },
       say('indexed', {
@@ -242,7 +256,17 @@ async function execute(invocation: Invocation, execution: Execution): Promise<nu
   const query = invocation.positionals.join(' ')
   const limit = invocation.limit ?? DEFAULT_LIMIT
   const startedAt = now()
-  await refreshIndex(index, workspace)
+  // While another process updates the index, answer from it as it is rather than queue.
+  const lock = tryRefreshLock(indexPath)
+  if (lock) {
+    try {
+      await refreshIndex(index, workspace)
+    } finally {
+      lock.release()
+    }
+  } else {
+    context.stderr(`${say('refreshBusy')}\n`)
+  }
   // Time the agent waited for its answer: the incremental refresh plus the lookup.
   let answeredAt = startedAt
   const record = (

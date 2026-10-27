@@ -96,3 +96,32 @@ test('an index built by an older version is emptied and rebuilt on open', async 
     index.close()
   }
 })
+
+const VERSION_3_SCHEMA = `
+CREATE TABLE files (id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE, mtime_ms REAL NOT NULL, size INTEGER NOT NULL);
+CREATE VIRTUAL TABLE lines_fts USING fts5(text, tokenize = "unicode61 tokenchars '_'", columnsize = 0);
+CREATE TABLE symbols (id INTEGER PRIMARY KEY, file_id INTEGER NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, line INTEGER NOT NULL);
+CREATE INDEX symbols_by_file ON symbols (file_id);
+CREATE VIRTUAL TABLE symbols_fts USING fts5(name, tokenize = "unicode61 tokenchars '_'");
+CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+INSERT INTO files VALUES (1, 'src/kept.ts', 1, 1);
+INSERT INTO lines_fts (rowid, text) VALUES (${String(2 ** 21 + 1)}, 'const keptAcrossUpgrade = 1');
+PRAGMA user_version = 3;
+`
+
+test('an index from version 0.2.1 is upgraded in place and keeps what it holds', () => {
+  const indexPath = join(tempDir(), 'index.sqlite')
+  const old = new DatabaseSync(indexPath)
+  old.exec(VERSION_3_SCHEMA)
+  old.close()
+
+  const index = openIndex(indexPath)
+  try {
+    assert.equal(index.schemaVersion(), SCHEMA_VERSION)
+    assert.deepEqual(findLines(index, 'keptAcrossUpgrade', 10), [
+      { path: 'src/kept.ts', line: 1, text: 'const keptAcrossUpgrade = 1' }
+    ])
+  } finally {
+    index.close()
+  }
+})

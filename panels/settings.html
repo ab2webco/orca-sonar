@@ -1,10 +1,11 @@
 <!--
   Sonar settings panel (Settings > Plugins > Sonar). Orca renders it in a
-  sandboxed frame with an opaque origin: no network, no local files, no direct
-  line to the worker. It reads what the worker publishes in plugin storage
-  (`state`, `rebuilds`) and writes only two things: the switches
-  (`preferences`, which the CLI reads on its next command) and rebuild requests
-  (`rebuild:<hash>`, attended on the worker's next wake). Orca sets the theme
+  sandboxed frame with an opaque origin: no network and no local files. It
+  reads what the worker publishes in plugin storage (`state`, `rebuilds`) and
+  writes only two things: the switches (`preferences`, which the CLI reads on
+  its next command) and rebuild requests (`rebuild:<hash>`). After a request it
+  runs Sonar: Refresh with `panel.runCommand` so the worker takes it now; an
+  Orca without that action leaves it for the worker's next wake. Orca sets the theme
   (`html.light|dark`) and the language (`html lang`) and injects its design
   tokens; every colour here is one of those tokens.
 -->
@@ -347,6 +348,8 @@
   var T = TEXT[LOCALE]
   var POLL_MS = 15000
   var REPLY_TIMEOUT_MS = 8000
+  // Orca gives a plugin command 30 s; Sonar: Refresh answers before its rebuilds finish.
+  var COMMAND_TIMEOUT_MS = 35000
   var REQUEST_PREFIX = 'rebuild:'
 
   function $(id) {
@@ -381,14 +384,14 @@
     else entry.reject(new Error(data.error || data.errorCode || 'failed'))
   })
 
-  function call(action, params) {
+  function call(action, params, timeoutMs) {
     return new Promise(function (resolve, reject) {
       nextId += 1
       var requestId = 'sonar-' + String(Date.now()) + '-' + String(nextId)
       var timer = setTimeout(function () {
         delete pending[requestId]
         reject(new Error('timeout'))
-      }, REPLY_TIMEOUT_MS)
+      }, timeoutMs || REPLY_TIMEOUT_MS)
       pending[requestId] = { resolve: resolve, reject: reject, timer: timer }
       window.parent.postMessage(
         { type: 'orca-panel-action', requestId: requestId, action: action, params: params || {} },
@@ -623,10 +626,22 @@
       key: REQUEST_PREFIX + hash(root),
       value: { root: root, at: new Date(at).toISOString() }
     })
-      .catch(function () {
-        delete view.queued[root]
-        view.failed = true
-      })
+      .then(
+        function () {
+          // Wakes the worker to take the request now. An Orca that does not let panels run
+          // commands refuses, and the request waits for the worker's next wake instead.
+          return call('panel.runCommand', { commandId: 'sonar.refresh' }, COMMAND_TIMEOUT_MS).then(
+            function () {
+              return load(false)
+            },
+            function () {}
+          )
+        },
+        function () {
+          delete view.queued[root]
+          view.failed = true
+        }
+      )
       .then(render)
   }
 

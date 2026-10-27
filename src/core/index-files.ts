@@ -10,14 +10,37 @@ export interface FileRecord {
   readonly size: number
 }
 
-export function indexedFiles(index: IndexStore): Map<string, { mtimeMs: number; size: number }> {
-  const records = new Map<string, { mtimeMs: number; size: number }>()
-  for (const row of index.all('SELECT path, mtime_ms, size FROM files')) {
+type FileStamps = Map<string, { mtimeMs: number; size: number }>
+
+function stamps(index: IndexStore, table: 'files' | 'skipped_files'): FileStamps {
+  const records: FileStamps = new Map()
+  for (const row of index.all(`SELECT path, mtime_ms, size FROM ${table}`)) {
     if (typeof row.path === 'string') {
       records.set(row.path, { mtimeMs: Number(row.mtime_ms), size: Number(row.size) })
     }
   }
   return records
+}
+
+export function indexedFiles(index: IndexStore): FileStamps {
+  return stamps(index, 'files')
+}
+
+/** Binary and oversized files, with the modification time and size they were skipped at. */
+export function skippedFiles(index: IndexStore): FileStamps {
+  return stamps(index, 'skipped_files')
+}
+
+/** Forgets the file's content and records it as skipped, so it is not read again until it changes. */
+export function skipFile(index: IndexStore, file: FileRecord): void {
+  index.transaction(() => {
+    removeFile(index, file.path)
+    index.run('INSERT INTO skipped_files (path, mtime_ms, size) VALUES (?, ?, ?)', [
+      file.path,
+      file.mtimeMs,
+      file.size
+    ])
+  })
 }
 
 /**
@@ -57,9 +80,10 @@ export function replaceFile(
   })
 }
 
-/** Forgets one file. Removing a file the index does not know is a no-op. */
+/** Forgets one file, indexed or skipped. Removing a file the index does not know is a no-op. */
 export function removeFile(index: IndexStore, path: string): void {
   index.transaction(() => {
+    index.run('DELETE FROM skipped_files WHERE path = ?', [path])
     const [row] = index.all('SELECT id FROM files WHERE path = ?', [path])
     if (row === undefined) {
       return
