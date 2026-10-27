@@ -1,7 +1,7 @@
 import { parseArgs } from 'node:util'
 import type { MessageKey, MessageValues } from '../core/messages.ts'
 
-export type Command = 'help' | 'install' | 'index' | 'status' | 'find' | 'symbol'
+export type Command = 'help' | 'install' | 'index' | 'status' | 'usage' | 'find' | 'symbol'
 
 export type UsageErrorCode =
   'unknown_command' | 'unknown_option' | 'invalid_limit' | 'query_required'
@@ -47,7 +47,7 @@ const OPTIONS = {
   help: { type: 'boolean', short: 'h', default: false }
 } as const
 
-const COMMANDS: readonly Command[] = ['install', 'index', 'status', 'find', 'symbol']
+const COMMANDS: readonly Command[] = ['install', 'index', 'status', 'usage', 'find', 'symbol']
 const QUERY_COMMANDS: readonly Command[] = ['find', 'symbol']
 const WHOLE_NUMBER = /^[1-9]\d*$/
 
