@@ -26,7 +26,11 @@ import { SCENARIOS, USAGE_SCENARIOS, type Language, type Scenario } from './pane
 
 interface Page {
   setContent(html: string): Promise<void>
-  waitForFunction(script: string): Promise<unknown>
+  waitForFunction(
+    script: string,
+    arg?: unknown,
+    options?: { readonly timeout: number }
+  ): Promise<unknown>
   evaluate(script: string): Promise<unknown>
   click(selector: string): Promise<void>
   waitForTimeout(ms: number): Promise<void>
@@ -103,6 +107,7 @@ function hostStub(scenario: Scenario): string {
     (function () {
       var storage = ${JSON.stringify(scenario.storage)}
       var context = ${JSON.stringify(scenario.context ?? null)}
+      var runsCommands = ${JSON.stringify(scenario.runsCommands === true)}
       window.__written = {}
       window.addEventListener('message', function (event) {
         var data = event.data
@@ -116,6 +121,21 @@ function hostStub(scenario: Scenario): string {
           storage[data.params.key] = data.params.value
           window.__written[data.params.key] = data.params.value
           value = { ok: true }
+        } else if (data.action === 'panel.runCommand') {
+          // An Orca without it refuses the action before it reaches the plugin.
+          if (!runsCommands) {
+            window.postMessage({ type: 'orca-panel-action-result', requestId: data.requestId, ok: false, errorCode: 'invalid_request', error: 'action: not a panel-callable action' }, '*')
+            return
+          }
+          var rebuilds = Object.assign({}, storage.rebuilds)
+          Object.keys(storage).forEach(function (key) {
+            if (key.indexOf('rebuild:') !== 0) return
+            rebuilds[storage[key].root] = { state: 'running', startedAt: new Date().toISOString() }
+            delete storage[key]
+          })
+          storage.rebuilds = rebuilds
+          window.__ran = data.params.commandId === 'sonar.refresh'
+          value = { ran: true }
         }
         window.postMessage({ type: 'orca-panel-action-result', requestId: data.requestId, ok: true, value: value }, '*')
       })
@@ -163,6 +183,14 @@ async function main(): Promise<void> {
             await tab.waitForFunction(scenario.ready)
             for (const step of scenario.clicks ?? []) {
               await tab.click(step)
+              await tab.waitForTimeout(50)
+            }
+            if (scenario.settled !== undefined) {
+              await tab
+                .waitForFunction(scenario.settled, undefined, { timeout: 5000 })
+                .catch(() => {
+                  problems.push(`${label}: never settled (${scenario.settled ?? ''})`)
+                })
               await tab.waitForTimeout(50)
             }
             const text = String(await tab.evaluate('document.body.innerText'))

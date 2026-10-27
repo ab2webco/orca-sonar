@@ -15,6 +15,13 @@ export interface Scenario {
   readonly ready: string
   /** CSS selectors clicked in order before the screenshot. */
   readonly clicks?: readonly string[]
+  /** A script that turns true once the clicks took effect; without it the runner waits briefly. */
+  readonly settled?: string
+  /**
+   * Whether this Orca lets a panel run its plugin's commands. When it does, `sonar.refresh` acts
+   * like the worker: every pending rebuild request starts running.
+   */
+  readonly runsCommands?: boolean
   /** Text that must be visible, per language. */
   readonly expect: Readonly<Record<Language, readonly string[]>>
   /** Text that must not be visible, in either language. */
@@ -162,6 +169,20 @@ export const SCENARIOS: readonly Scenario[] = [
       JSON.stringify(written) === JSON.stringify({ preferences: { agents: false, warmup: true } })
         ? null
         : `wrote ${JSON.stringify(written)}, expected agents off with the warm-up default`
+  },
+  {
+    name: 'settings-rebuild-now',
+    panel: 'settings.html',
+    storage: { state: state() },
+    ready: SETTINGS_READY,
+    runsCommands: true,
+    clicks: ['#list li:first-child button'],
+    settled: 'window.__ran === true',
+    expect: {
+      en: ['Rebuilding…'],
+      es: ['Reconstruyendo…']
+    },
+    absent: ['Queued: runs on the next agent activity', 'En cola: se ejecuta']
   },
   {
     name: 'settings-rebuild-queued',

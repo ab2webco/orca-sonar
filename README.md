@@ -23,7 +23,9 @@ configuration, so `git status` stays the same.
     as it is created, so the first search does not wait. It never runs while
     agents are switched off.
   - For each workspace: files, symbols, size, when it was last indexed, and a
-    **Rebuild** (or **Build index**) button.
+    **Rebuild** (or **Build index**) button that starts right away on Orca
+    builds that let a panel run its plugin's commands, and is queued on older
+    ones.
 - **A Sonar page in the left sidebar** with usage over the last 30 days:
   queries per day (`find` and `symbol`), average query time, results returned,
   workspaces indexed, and an **estimated** saving in tokens and bytes versus
@@ -52,20 +54,29 @@ plugin ships a skill, Orca asks for your consent again on every update.
 1. Enable Sonar in **Settings → Plugins** and accept the permissions.
 2. Run _Sonar: Refresh_ from the command palette (or wait for the next agent
    activity). The Sonar card in Settings lists your local workspaces.
-3. Press **Build index** on one of them, then _Sonar: Refresh_. The first build
-   of a large repository can take around 20 seconds; later updates only re-read
-   files that changed.
+3. Press **Build index** on one of them (on an older Orca, then run
+   _Sonar: Refresh_). The first build of a large repository can take around 20
+   seconds; later updates only re-read files that changed, and a binary or
+   oversized file is read again only after it changes.
 4. From a terminal in that worktree, run `orca sonar symbol <a function you
 know>`. You should get its `path:line` back, and the lookup shows up on the
    Sonar page in the sidebar.
 
 ### Why the panels wait for activity
 
-Orca starts a plugin's background worker only for a palette command or an
-event, such as an agent changing state, and a panel cannot start it. So the
-panels refresh on the next agent activity, a **Rebuild** pressed in Settings is
-queued until then, and _Sonar: Refresh_ does both at once. The switches are the
-exception: they take effect on the very next `orca sonar` command.
+Orca starts a plugin's background worker for a palette command or an event,
+such as an agent changing state. So the panels refresh on the next agent
+activity, and _Sonar: Refresh_ refreshes them at once. **Rebuild** runs
+_Sonar: Refresh_ itself on Orca builds that let a panel run its plugin's
+commands; on older ones it is queued until the next activity. The switches take
+effect on the very next `orca sonar` command.
+
+### When several searches run at once
+
+Only one Sonar process updates an index at a time. A `find` or `symbol` that
+arrives while another process is updating answers from the index as it is and
+says its results may miss the latest changes; `orca sonar index` waits its
+turn. Indexes built by 0.2.1 are upgraded in place, without a rebuild.
 
 ## How the saving is estimated
 
