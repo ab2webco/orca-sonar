@@ -3,6 +3,7 @@ import { indexFilePath, resolveUserDataDir, type Environment } from '../core/ind
 import { readIndexStatus } from '../core/index-status.ts'
 import { openIndex, type IndexStore } from '../core/index-store.ts'
 import { resolveLocale, type Locale } from '../core/locale.ts'
+import { readPreferences } from '../core/preferences.ts'
 import { translate, type MessageKey, type MessageValues } from '../core/messages.ts'
 import { refreshIndex } from '../core/refresh-index.ts'
 import { findLines, findSymbols } from '../core/search.ts'
@@ -43,6 +44,22 @@ export async function runCli(argv: readonly string[], context: CliContext): Prom
 
   if (invocation.command === 'help') {
     context.stdout(`${say('usage')}\n`)
+    return EXIT_OK
+  }
+
+  const preferences = readPreferences(userDataDir)
+  if ((invocation.command === 'find' || invocation.command === 'symbol') && !preferences.agents) {
+    context.stderr(`${say('agentsOff')}\n`)
+    return EXIT_FAILURE
+  }
+  // Orca's background warm-up sets ORCA_SONAR_WARMUP=1; --warmup does the same by hand.
+  const warmup = invocation.warmup || context.env.ORCA_SONAR_WARMUP === '1'
+  if (invocation.command === 'index' && warmup && !(preferences.warmup && preferences.agents)) {
+    context.stdout(
+      invocation.json
+        ? `${JSON.stringify({ command: 'index', skipped: 'warmup-off' }, null, 2)}\n`
+        : `${say('warmupSkipped')}\n`
+    )
     return EXIT_OK
   }
 
