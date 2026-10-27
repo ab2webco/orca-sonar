@@ -18,6 +18,13 @@
         "icon": "icons/sonar.svg",
         "entry": "panels/settings.html",
         "surface": "settings"
+      },
+      {
+        "id": "sonar-usage",
+        "title": "Sonar",
+        "icon": "icons/sonar.svg",
+        "entry": "panels/usage.html",
+        "surface": "nav"
       }
     ],
     "commands": [

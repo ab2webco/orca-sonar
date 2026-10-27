@@ -22,7 +22,7 @@ import { mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { SCENARIOS, type Language, type Scenario } from './panel-scenarios.ts'
+import { SCENARIOS, USAGE_SCENARIOS, type Language, type Scenario } from './panel-scenarios.ts'
 
 interface Page {
   setContent(html: string): Promise<void>
@@ -145,7 +145,7 @@ async function main(): Promise<void> {
   const problems: string[] = []
   let taken = 0
   try {
-    for (const scenario of SCENARIOS) {
+    for (const scenario of [...SCENARIOS, ...USAGE_SCENARIOS]) {
       const html =
         panels.get(scenario.panel) ?? readFileSync(join(ROOT, 'panels', scenario.panel), 'utf8')
       panels.set(scenario.panel, html)

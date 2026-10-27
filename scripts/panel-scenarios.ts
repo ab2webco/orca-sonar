@@ -249,3 +249,131 @@ export const SCENARIOS: readonly Scenario[] = [
     }
   }
 ]
+
+function localDay(offset: number): string {
+  const date = new Date(now)
+  date.setDate(date.getDate() - offset)
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${String(date.getFullYear())}-${month}-${day}`
+}
+
+/** A month of made-up lookups: quiet weekends, a busy last week. */
+const DAYS = Array.from({ length: 30 }, (_, n) => {
+  const offset = 29 - n
+  const weekend = [0, 6].includes(new Date(now - offset * 86_400_000).getDay())
+  const find = weekend ? n % 3 : 8 + ((n * 7) % 13) + (offset < 7 ? 14 : 0)
+  return { day: localDay(offset), find, symbol: weekend ? 0 : 3 + ((n * 5) % 7) }
+})
+const FIND = DAYS.reduce((sum, day) => sum + day.find, 0)
+const SYMBOL = DAYS.reduce((sum, day) => sum + day.symbol, 0)
+
+const USAGE = {
+  command: 'usage',
+  since: ago(60 * 24 * 40),
+  days: DAYS,
+  totals: {
+    queries: FIND + SYMBOL,
+    find: FIND,
+    symbol: SYMBOL,
+    results: (FIND + SYMBOL) * 11,
+    averageMs: 183.4,
+    outputBytes: 1_412_000,
+    baselineBytes: 96_830_000,
+    savedBytes: 95_418_000,
+    savedTokens: 23_854_500
+  },
+  workspacesQueried: 7,
+  workspacesIndexed: 12
+}
+
+const USAGE_READY =
+  "!document.getElementById('message').hidden || !document.getElementById('tiles').hidden"
+
+export const USAGE_SCENARIOS: readonly Scenario[] = [
+  {
+    name: 'usage',
+    panel: 'usage.html',
+    full: true,
+    storage: { usage: USAGE, state: { checkedAt: ago(2) } },
+    ready: USAGE_READY,
+    expect: {
+      en: [
+        'Sonar usage',
+        'Queries',
+        '183 ms',
+        'Workspaces indexed',
+        '7 queried',
+        'Tokens saved, estimated',
+        '23.9M',
+        'Queries per day',
+        'counting up to 2,000 lines',
+        'not a measurement'
+      ],
+      es: [
+        'Uso de Sonar',
+        'Consultas',
+        '183 ms',
+        'Espacios de trabajo indexados',
+        '7 consultados',
+        'Tokens ahorrados, estimado',
+        '23,9\u00a0M',
+        'Consultas por día',
+        'contando hasta 2000 líneas',
+        'no una medición'
+      ]
+    }
+  },
+  {
+    name: 'usage-tooltip',
+    panel: 'usage.html',
+    storage: { usage: USAGE, state: { checkedAt: ago(2) } },
+    ready: USAGE_READY,
+    clicks: ['#plot .day:nth-child(30)'],
+    expect: {
+      en: [`: ${String(DAYS[29]?.find)} find, ${String(DAYS[29]?.symbol)} symbol`],
+      es: [`: ${String(DAYS[29]?.find)} find, ${String(DAYS[29]?.symbol)} symbol`]
+    }
+  },
+  {
+    name: 'usage-no-queries',
+    panel: 'usage.html',
+    storage: {
+      usage: {
+        ...USAGE,
+        days: DAYS.map(({ day }) => ({ day, find: 0, symbol: 0 })),
+        totals: {
+          ...USAGE.totals,
+          queries: 0,
+          find: 0,
+          symbol: 0,
+          results: 0,
+          averageMs: null,
+          outputBytes: 0,
+          baselineBytes: 0,
+          savedBytes: 0,
+          savedTokens: 0
+        },
+        workspacesQueried: 0
+      },
+      state: { checkedAt: ago(2) }
+    },
+    ready: USAGE_READY,
+    expect: {
+      en: ['No lookups in the last 30 days', 'Workspaces indexed'],
+      es: ['No hubo búsquedas en los últimos 30 días', 'Espacios de trabajo indexados']
+    },
+    absent: ['Queries per day', 'Consultas por día']
+  },
+  {
+    name: 'usage-never-checked',
+    panel: 'usage.html',
+    storage: {},
+    ready: USAGE_READY,
+    expect: {
+      en: ['No statistics yet', 'Sonar: Refresh'],
+      es: ['Aún no hay estadísticas', 'Sonar: Refresh']
+    },
+    absent: ['Tokens saved', 'Tokens ahorrados']
+  }
+]
