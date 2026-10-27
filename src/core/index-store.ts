@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite'
 
-export const SCHEMA_VERSION = 3
+export const SCHEMA_VERSION = 4
 
 /**
  * A line's FTS rowid is `file id * LINE_SPAN + line number`, so the index keeps
@@ -12,6 +12,30 @@ export const SCHEMA_VERSION = 3
 export const LINE_SPAN = 2 ** 21
 
 const TOKENIZER = `tokenize = "unicode61 tokenchars '_'"`
+
+/** Binary and oversized files, recorded so a refresh reads them again only after they change. */
+const SKIPPED_FILES = `
+CREATE TABLE IF NOT EXISTS skipped_files (
+  path TEXT PRIMARY KEY,
+  mtime_ms REAL NOT NULL,
+  size INTEGER NOT NULL
+);
+`
+
+/** What brings an index from each older version to the next, without rebuilding it. */
+const UPGRADES: ReadonlyMap<number, string> = new Map([[3, SKIPPED_FILES]])
+
+function canUpgrade(version: number): boolean {
+  if (version <= 0 || version >= SCHEMA_VERSION) {
+    return false
+  }
+  for (let step = version; step < SCHEMA_VERSION; step++) {
+    if (!UPGRADES.has(step)) {
+      return false
+    }
+  }
+  return true
+}
 
 // columnsize=0 drops the per-line token counts; bm25 recounts only the lines
 // that match, which are short.
@@ -32,6 +56,7 @@ CREATE TABLE IF NOT EXISTS symbols (
 );
 CREATE INDEX IF NOT EXISTS symbols_by_file ON symbols (file_id);
 CREATE VIRTUAL TABLE IF NOT EXISTS symbols_fts USING fts5(name, ${TOKENIZER});
+${SKIPPED_FILES}
 CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -56,7 +81,7 @@ function tableNames(db: DatabaseSync, virtual: boolean): string[] {
 }
 
 /**
- * Deletes an index another schema version built, which is far faster than
+ * Deletes an index another schema version built and no upgrade covers, which is far faster than
  * dropping its tables in place (25 s for an 830 MB index). When the files
  * cannot be removed, for example while another process holds them open on
  * Windows, `prepareSchema` replaces the schema in place instead.
@@ -73,7 +98,7 @@ function discardOutdated(path: string): void {
   } finally {
     probe.close()
   }
-  if (version === SCHEMA_VERSION || version === 0) {
+  if (version === SCHEMA_VERSION || version === 0 || canUpgrade(version)) {
     return
   }
   try {
@@ -86,10 +111,10 @@ function discardOutdated(path: string): void {
 }
 
 /**
- * Creates the schema, or replaces an index another schema version built: its
- * tables are dropped, so the next refresh rebuilds it, and the file is
- * compacted. Runs only when the version differs, so opening an up-to-date
- * index writes nothing.
+ * Creates the schema, upgrades an older index that an upgrade covers, or
+ * replaces any other: its tables are dropped, so the next refresh rebuilds it,
+ * and the file is compacted. Runs only when the version differs, so opening an
+ * up-to-date index writes nothing.
  */
 function prepareSchema(db: DatabaseSync): void {
   if (userVersion(db) === SCHEMA_VERSION) {
@@ -99,7 +124,12 @@ function prepareSchema(db: DatabaseSync): void {
   let replaced = false
   try {
     const version = userVersion(db)
-    if (version !== SCHEMA_VERSION) {
+    if (canUpgrade(version)) {
+      for (let step = version; step < SCHEMA_VERSION; step++) {
+        db.exec(UPGRADES.get(step) ?? '')
+      }
+      db.exec(`PRAGMA user_version = ${String(SCHEMA_VERSION)}`)
+    } else if (version !== SCHEMA_VERSION) {
       replaced = version !== 0
       // Virtual tables first: dropping one also drops its shadow tables.
       for (const name of [...tableNames(db, true), ...tableNames(db, false)]) {

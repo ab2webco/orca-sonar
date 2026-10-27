@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync, unlinkSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
@@ -87,6 +87,43 @@ test('a deleted file leaves no rows behind', async () => {
     index.all('SELECT id FROM symbols WHERE file_id NOT IN (SELECT id FROM files)'),
     []
   )
+})
+
+test('a binary file is read once, and again only after it changes', async () => {
+  const logo = join(root, 'logo.bin')
+  // A whole second, so the time written back below is exactly the recorded one.
+  const recorded = new Date('2026-01-01T00:00:00.000Z')
+  utimesSync(logo, recorded, recorded)
+  await refresh()
+  // Same size and modification time: a refresh that trusts its record never sees the text.
+  writeFileSync(logo, 'abcd')
+  utimesSync(logo, recorded, recorded)
+
+  await refresh()
+  assert.deepEqual(findLines(index, 'abcd', 10), [])
+
+  const later = new Date(Date.now() + 10_000)
+  utimesSync(logo, later, later)
+  const summary = await refresh()
+
+  assert.equal(summary.indexed, 1)
+  assert.deepEqual(findLines(index, 'abcd', 10), [{ path: 'logo.bin', line: 1, text: 'abcd' }])
+})
+
+test('a file that turns binary leaves the index, and its record does not linger once deleted', async () => {
+  const file = join(root, 'src', 'turns.ts')
+  writeFileSync(file, 'export const turnsBinary = 1\n')
+  await refresh()
+  writeFileSync(file, Buffer.from([0x00, 0x74, 0x75, 0x72, 0x6e, 0x73]))
+  const later = new Date(Date.now() + 20_000)
+  utimesSync(file, later, later)
+
+  await refresh()
+  assert.deepEqual(findLines(index, 'turnsBinary', 10), [])
+
+  unlinkSync(file)
+  await refresh()
+  assert.deepEqual(index.all("SELECT path FROM skipped_files WHERE path = 'src/turns.ts'"), [])
 })
 
 test('a refresh records when the index was last brought up to date', async () => {
