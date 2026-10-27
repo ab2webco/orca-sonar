@@ -4,8 +4,49 @@
   "publisher": "ab2web",
   "name": "Sonar",
   "version": "0.1.0",
-  "description": "Fast file and symbol lookup for agents, with an index kept in Orca's data folder and never inside the repository.",
-  "engines": { "orca": ">=1.4.0" },
+  "description": "Fast file and symbol lookup for agents, with an index kept in Orca's data folder and never inside the repository. Switch it on or off for agents, see every workspace's index and how much it saves versus grep.",
+  "engines": {
+    "orca": ">=1.4.160"
+  },
   "pluginApi": 1,
-  "capabilities": []
+  "main": "main.mjs",
+  "contributes": {
+    "panels": [
+      {
+        "id": "sonar-settings",
+        "title": "Sonar",
+        "icon": "icons/sonar.svg",
+        "entry": "panels/settings.html",
+        "surface": "settings"
+      }
+    ],
+    "commands": [
+      {
+        "id": "sonar.refresh",
+        "title": "Sonar: Refresh"
+      }
+    ],
+    "events": [
+      {
+        "on": "agent.status.changed"
+      },
+      {
+        "on": "worktree.created"
+      }
+    ]
+  },
+  "capabilities": [
+    {
+      "kind": "process:spawn"
+    },
+    {
+      "kind": "storage"
+    },
+    {
+      "kind": "settings:own"
+    },
+    {
+      "kind": "events:subscribe"
+    }
+  ]
 }
