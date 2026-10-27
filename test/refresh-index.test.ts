@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
 import { openIndex, type IndexStore } from '../src/core/index-store.ts'
-import { refreshIndex } from '../src/core/refresh-index.ts'
+import { readIndexedAt, refreshIndex } from '../src/core/refresh-index.ts'
 import { resolveWorkspace } from '../src/core/workspace.ts'
 
 let base: string
@@ -78,4 +78,13 @@ test('a deleted file leaves no rows behind', async () => {
   assert.deepEqual(summary, { indexed: 0, unchanged: 1, removed: 1 })
   assert.equal(index.all("SELECT path FROM lines WHERE path = 'src/temp.ts'").length, 0)
   assert.equal(index.all("SELECT path FROM symbols WHERE path = 'src/temp.ts'").length, 0)
+})
+
+test('a refresh records when the index was last brought up to date', async () => {
+  const workspace = await resolveWorkspace(root)
+  const at = new Date('2026-10-26T12:00:00.000Z')
+
+  await refreshIndex(index, workspace, { now: () => at })
+
+  assert.equal(readIndexedAt(index), '2026-10-26T12:00:00.000Z')
 })

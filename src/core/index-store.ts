@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite'
 
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 
 const TOKENIZER = `tokenize = "unicode61 tokenchars '_'"`
 
@@ -29,6 +29,10 @@ CREATE TABLE IF NOT EXISTS symbols (
 );
 CREATE INDEX IF NOT EXISTS symbols_by_path ON symbols (path);
 CREATE VIRTUAL TABLE IF NOT EXISTS symbols_fts USING fts5(name, ${TOKENIZER});
+CREATE TABLE IF NOT EXISTS meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 PRAGMA user_version = ${String(SCHEMA_VERSION)};
 `
 
