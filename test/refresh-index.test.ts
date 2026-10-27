@@ -3,8 +3,9 @@ import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync, unlinkSync }
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
-import { openIndex, type IndexStore } from '../src/core/index-store.ts'
+import { LINE_SPAN, openIndex, type IndexStore } from '../src/core/index-store.ts'
 import { readIndexedAt, refreshIndex } from '../src/core/refresh-index.ts'
+import { findLines, findSymbols } from '../src/core/search.ts'
 import { resolveWorkspace } from '../src/core/workspace.ts'
 
 let base: string
@@ -38,8 +39,8 @@ test('the first refresh indexes text files and skips dependencies and binaries',
 
   assert.deepEqual(summary, { indexed: 1, unchanged: 0, removed: 0 })
   assert.deepEqual(index.all('SELECT path FROM files ORDER BY path'), [{ path: 'src/greet.ts' }])
-  assert.deepEqual(index.all("SELECT name FROM symbols WHERE path = 'src/greet.ts'"), [
-    { name: 'greeting' }
+  assert.deepEqual(findSymbols(index, 'greeting', 10), [
+    { path: 'src/greet.ts', line: 1, name: 'greeting', kind: 'function' }
   ])
 })
 
@@ -58,14 +59,11 @@ test('an edited file is indexed again and its new text is searchable', async () 
   const summary = await refresh()
 
   assert.deepEqual(summary, { indexed: 1, unchanged: 0, removed: 0 })
-  assert.deepEqual(
-    index.all(
-      'SELECT l.line_no FROM lines_fts f JOIN lines l ON l.id = f.rowid WHERE lines_fts MATCH ?',
-      ['farewell']
-    ),
-    [{ line_no: 1 }]
-  )
-  assert.equal(index.all('SELECT name FROM symbols WHERE name = ?', ['greeting']).length, 0)
+  assert.deepEqual(findLines(index, 'farewell', 10), [
+    { path: 'src/greet.ts', line: 1, text: 'export function farewell() {' }
+  ])
+  assert.deepEqual(findLines(index, 'greeting', 10), [])
+  assert.deepEqual(findSymbols(index, 'greeting', 10), [])
 })
 
 test('a deleted file leaves no rows behind', async () => {
@@ -76,8 +74,19 @@ test('a deleted file leaves no rows behind', async () => {
   const summary = await refresh()
 
   assert.deepEqual(summary, { indexed: 0, unchanged: 1, removed: 1 })
-  assert.equal(index.all("SELECT path FROM lines WHERE path = 'src/temp.ts'").length, 0)
-  assert.equal(index.all("SELECT path FROM symbols WHERE path = 'src/temp.ts'").length, 0)
+  assert.deepEqual(findLines(index, 'temporary', 10), [])
+  assert.equal(index.all("SELECT path FROM files WHERE path = 'src/temp.ts'").length, 0)
+  assert.deepEqual(
+    index.all(
+      `SELECT rowid FROM lines_fts
+        WHERE rowid / ${String(LINE_SPAN)} NOT IN (SELECT id FROM files)`
+    ),
+    []
+  )
+  assert.deepEqual(
+    index.all('SELECT id FROM symbols WHERE file_id NOT IN (SELECT id FROM files)'),
+    []
+  )
 })
 
 test('a refresh records when the index was last brought up to date', async () => {

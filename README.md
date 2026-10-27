@@ -110,6 +110,11 @@ extracted from TypeScript, JavaScript and Python declarations. Each worktree
 of a repository has its own index, so uncommitted changes in one never show up
 in another.
 
+An index keeps each searchable line's text once, so it takes roughly 1.7 times
+the size of the code it covers (about 210 MB for a 17,000-file, 127 MB
+repository). When an update changes the index format, the old index is deleted
+on first use and rebuilt.
+
 ## Development
 
 ```sh
