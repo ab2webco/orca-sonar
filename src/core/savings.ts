@@ -1,4 +1,4 @@
-import type { IndexStore } from './index-store.ts'
+import { LINE_SPAN, type IndexStore } from './index-store.ts'
 import { matchExpression } from './search.ts'
 
 /**
@@ -14,6 +14,9 @@ import { matchExpression } from './search.ts'
  * slow and the estimate stays on the low side. It is an estimate, and the
  * panel says so next to this formula.
  */
+/** Inlined: a bound number is a REAL, and REAL division never yields a file id. */
+const SPAN = String(LINE_SPAN)
+
 export const GREP_LINE_CAP = 2000
 
 /** A common rule of thumb for code and English text. */
@@ -39,10 +42,10 @@ export function grepOutputBytes(index: IndexStore, query: string, cap = GREP_LIN
   }
   const [row] = index.all(
     `SELECT COALESCE(SUM(
-              LENGTH(CAST(l.path AS BLOB)) + LENGTH(CAST(l.line_no AS TEXT)) +
-              LENGTH(CAST(l.text AS BLOB)) + 3), 0) AS bytes
-       FROM (SELECT rowid FROM lines_fts WHERE lines_fts MATCH ? LIMIT ?) AS m
-       JOIN lines AS l ON l.id = m.rowid`,
+              LENGTH(CAST(f.path AS BLOB)) + LENGTH(CAST(m.rowid % ${SPAN} AS TEXT)) +
+              LENGTH(CAST(m.text AS BLOB)) + 3), 0) AS bytes
+       FROM (SELECT rowid, text FROM lines_fts WHERE lines_fts MATCH ? LIMIT ?) AS m
+       JOIN files AS f ON f.id = m.rowid / ${SPAN}`,
     [expression, cap]
   )
   return Number(row?.bytes ?? 0)

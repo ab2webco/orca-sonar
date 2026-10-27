@@ -1,5 +1,5 @@
 import type { CodeSymbol } from './symbols.ts'
-import type { IndexStore } from './index-store.ts'
+import { LINE_SPAN, type IndexStore } from './index-store.ts'
 
 /** Longer lines are cut before they reach the index; minified bundles stay small. */
 export const MAX_LINE_LENGTH = 500
@@ -20,7 +20,10 @@ export function indexedFiles(index: IndexStore): Map<string, { mtimeMs: number; 
   return records
 }
 
-/** Replaces everything the index knows about one file, in one transaction. */
+/**
+ * Replaces everything the index knows about one file, in one transaction.
+ * Blank lines are skipped: no word ever matches them.
+ */
 export function replaceFile(
   index: IndexStore,
   file: FileRecord,
@@ -29,29 +32,26 @@ export function replaceFile(
 ): void {
   index.transaction(() => {
     removeFile(index, file.path)
-    index.run('INSERT INTO files (path, mtime_ms, size) VALUES (?, ?, ?)', [
+    const fileId = index.run('INSERT INTO files (path, mtime_ms, size) VALUES (?, ?, ?)', [
       file.path,
       file.mtimeMs,
       file.size
     ])
     lines.forEach((text, offset) => {
-      const rowid = index.run('INSERT INTO lines (path, line_no, text) VALUES (?, ?, ?)', [
-        file.path,
-        offset + 1,
-        text.slice(0, MAX_LINE_LENGTH)
-      ])
+      const lineNo = offset + 1
+      if (lineNo >= LINE_SPAN || text.trim() === '') {
+        return
+      }
       index.run('INSERT INTO lines_fts (rowid, text) VALUES (?, ?)', [
-        rowid,
+        fileId * LINE_SPAN + lineNo,
         text.slice(0, MAX_LINE_LENGTH)
       ])
     })
     for (const symbol of symbols) {
-      const rowid = index.run('INSERT INTO symbols (path, name, kind, line) VALUES (?, ?, ?, ?)', [
-        symbol.path,
-        symbol.name,
-        symbol.kind,
-        symbol.line
-      ])
+      const rowid = index.run(
+        'INSERT INTO symbols (file_id, name, kind, line) VALUES (?, ?, ?, ?)',
+        [fileId, symbol.name, symbol.kind, symbol.line]
+      )
       index.run('INSERT INTO symbols_fts (rowid, name) VALUES (?, ?)', [rowid, symbol.name])
     }
   })
@@ -60,12 +60,19 @@ export function replaceFile(
 /** Forgets one file. Removing a file the index does not know is a no-op. */
 export function removeFile(index: IndexStore, path: string): void {
   index.transaction(() => {
-    index.run('DELETE FROM lines_fts WHERE rowid IN (SELECT id FROM lines WHERE path = ?)', [path])
-    index.run('DELETE FROM lines WHERE path = ?', [path])
-    index.run('DELETE FROM symbols_fts WHERE rowid IN (SELECT id FROM symbols WHERE path = ?)', [
-      path
+    const [row] = index.all('SELECT id FROM files WHERE path = ?', [path])
+    if (row === undefined) {
+      return
+    }
+    const fileId = Number(row.id)
+    index.run('DELETE FROM lines_fts WHERE rowid >= ? AND rowid < ?', [
+      fileId * LINE_SPAN,
+      (fileId + 1) * LINE_SPAN
     ])
-    index.run('DELETE FROM symbols WHERE path = ?', [path])
-    index.run('DELETE FROM files WHERE path = ?', [path])
+    index.run('DELETE FROM symbols_fts WHERE rowid IN (SELECT id FROM symbols WHERE file_id = ?)', [
+      fileId
+    ])
+    index.run('DELETE FROM symbols WHERE file_id = ?', [fileId])
+    index.run('DELETE FROM files WHERE id = ?', [fileId])
   })
 }

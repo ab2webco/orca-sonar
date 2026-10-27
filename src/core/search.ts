@@ -1,4 +1,4 @@
-import type { IndexStore } from './index-store.ts'
+import { LINE_SPAN, type IndexStore } from './index-store.ts'
 
 export interface LineMatch {
   readonly path: string
@@ -14,6 +14,9 @@ export interface SymbolMatch {
   readonly name: string
   readonly kind: string
 }
+
+/** Inlined: a bound number is a REAL, and REAL division never yields a file id. */
+const SPAN = String(LINE_SPAN)
 
 const WORD = /[\p{L}\p{N}_$]+/gu
 
@@ -38,11 +41,13 @@ export function findLines(index: IndexStore, query: string, limit: number): Line
   }
   return index
     .all(
-      `SELECT lines.path AS path, lines.line_no AS line, lines.text AS text
-         FROM lines_fts JOIN lines ON lines.id = lines_fts.rowid
-        WHERE lines_fts MATCH ?
-        ORDER BY bm25(lines_fts)
-        LIMIT ?`,
+      `SELECT files.path AS path, m.rowid % ${SPAN} AS line, m.text AS text
+         FROM (SELECT rowid, text, bm25(lines_fts) AS score FROM lines_fts
+                WHERE lines_fts MATCH ?
+                ORDER BY score
+                LIMIT ?) AS m
+         JOIN files ON files.id = m.rowid / ${SPAN}
+        ORDER BY m.score, m.rowid`,
       [expression, limit]
     )
     .map((row) => ({ path: asText(row.path), line: Number(row.line), text: asText(row.text) }))
@@ -55,10 +60,12 @@ export function findSymbols(index: IndexStore, name: string, limit: number): Sym
   }
   return index
     .all(
-      `SELECT symbols.path AS path, symbols.line AS line, symbols.name AS name, symbols.kind AS kind
-         FROM symbols_fts JOIN symbols ON symbols.id = symbols_fts.rowid
+      `SELECT files.path AS path, symbols.line AS line, symbols.name AS name, symbols.kind AS kind
+         FROM symbols_fts
+         JOIN symbols ON symbols.id = symbols_fts.rowid
+         JOIN files ON files.id = symbols.file_id
         WHERE symbols_fts MATCH ? AND symbols.name = ? COLLATE NOCASE
-        ORDER BY symbols.path, symbols.line
+        ORDER BY files.path, symbols.line
         LIMIT ?`,
       [expression, name.trim(), limit]
     )
