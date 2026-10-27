@@ -176,6 +176,12 @@ async function main(): Promise<void> {
               if (text.includes(unexpected)) problems.push(`${label}: shows "${unexpected}"`)
             }
             if (overflow > 0) problems.push(`${label}: scrolls sideways by ${String(overflow)} px`)
+            // Without it the frame's own scrollbar stays light in dark mode, as seen live in Orca.
+            const scheme = String(
+              await tab.evaluate('getComputedStyle(document.documentElement).colorScheme')
+            )
+            if (scheme !== theme)
+              problems.push(`${label}: color-scheme is "${scheme}", not ${theme}`)
             if (scenario.checkWritten) {
               const problem = scenario.checkWritten(await tab.evaluate('window.__written'))
               if (problem !== null) problems.push(`${label}: ${problem}`)

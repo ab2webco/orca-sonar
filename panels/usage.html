@@ -7,6 +7,13 @@
   of the tokens Orca injects.
 -->
 <style>
+  /* Keeps the frame's own scrollbar and form controls in Orca's theme. */
+  :root {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
   html,
   body {
     background: var(--background);

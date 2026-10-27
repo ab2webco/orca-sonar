@@ -1,15 +1,114 @@
-# orca-sonar
+# Sonar for Orca Lab
 
-Orca plugin: fast file and symbol lookup for agents, with fewer tokens.
+Sonar lets your agents find where something lives in a repository without
+grep. It keeps a search index of each worktree and answers a lookup in a
+fraction of a second with only `path:line` and the matching line, so agents
+spend far fewer tokens looking around.
 
-Status: phase 2, first PR. This change adds the project scaffold, the MIT
-license and the cross-platform CI. The index and the `find` and `symbol`
-commands come in the PRs that follow.
+- `orca sonar find invoice total`: lines that contain every word.
+- `orca sonar symbol parseInvoice`: where a function, class, interface, type or
+  enum with that exact name is declared.
+
+The indexes live in Orca's data folder, never inside your repository. Sonar
+never touches `.gitignore`, `.claude/`, `CLAUDE.md`, `AGENTS.md` or your git
+configuration, so `git status` stays the same.
+
+## What you get when you enable it
+
+- **Settings → Plugins → Sonar**: two switches and every local workspace's
+  index.
+  - _Agents can use Sonar_: when off, `orca sonar find` and `symbol` refuse and
+    tell the agent to use `rg` or `grep`. Indexes and panels keep working.
+  - _Build the index in the background_: lets Orca index a new worktree as soon
+    as it is created, so the first search does not wait. It never runs while
+    agents are switched off.
+  - For each workspace: files, symbols, size, when it was last indexed, and a
+    **Rebuild** (or **Build index**) button.
+- **A Sonar page in the left sidebar** with usage over the last 30 days:
+  queries per day (`find` and `symbol`), average query time, results returned,
+  workspaces indexed, and an **estimated** saving in tokens and bytes versus
+  grep, with the formula it uses.
+- **One palette command**, _Sonar: Refresh_, which updates both panels and runs
+  any rebuild you queued.
+- **The `orca-sonar` skill**, which tells agents when to use `orca sonar`
+  instead of grep, and what to do when it is switched off or missing.
+
+Both panels follow Orca's language (Spanish or English) and theme. Because the
+plugin ships a skill, Orca asks for your consent again on every update.
 
 ## Requirements
 
-- Node.js 24 or newer (the plugin runs TypeScript directly, with no build step).
+- Orca Lab 1.4.160 or newer.
+- Node.js 24 or newer on `PATH` (Sonar runs TypeScript directly and uses
+  Node's built-in SQLite).
 - Git on `PATH`, for repositories and worktrees.
+- Orca's `orca` command on `PATH`; Sonar uses it to list your workspaces.
+- For agents: an Orca build that includes the `orca sonar` command. Until yours
+  does, the panels say so and agents keep using grep; the switches are saved
+  and apply as soon as it does.
+
+## Check that it works
+
+1. Enable Sonar in **Settings → Plugins** and accept the permissions.
+2. Run _Sonar: Refresh_ from the command palette (or wait for the next agent
+   activity). The Sonar card in Settings lists your local workspaces.
+3. Press **Build index** on one of them, then _Sonar: Refresh_. The first build
+   of a large repository can take around 20 seconds; later updates only re-read
+   files that changed.
+4. From a terminal in that worktree, run `orca sonar symbol <a function you
+know>`. You should get its `path:line` back, and the lookup shows up on the
+   Sonar page in the sidebar.
+
+### Why the panels wait for activity
+
+Orca starts a plugin's background worker only for a palette command or an
+event, such as an agent changing state, and a panel cannot start it. So the
+panels refresh on the next agent activity, a **Rebuild** pressed in Settings is
+queued until then, and _Sonar: Refresh_ does both at once. The switches are the
+exception: they take effect on the very next `orca sonar` command.
+
+## How the saving is estimated
+
+For each lookup Sonar compares what it printed with what an agent would have
+read with grep and then opening the files that hold the results:
+
+```text
+baseline = grep output (path:line:text per matching line, up to 2,000 lines)
+         + size of the files holding Sonar's results
+saving   = baseline − Sonar's output, never below 0
+tokens   ≈ saving ÷ 4 bytes
+```
+
+It is an estimate, not a measurement. Sonar records the command, the time
+taken, the number of results and these byte counts for each lookup, never the
+words searched for, and keeps 90 days.
+
+## Command line
+
+The plugin is also a plain command line, which is what `orca sonar` runs:
+
+```sh
+node bin/orca-sonar.ts status            # what the index holds, without changing it
+node bin/orca-sonar.ts index             # bring the index up to date
+node bin/orca-sonar.ts find <words...>   # lines that contain every word
+node bin/orca-sonar.ts symbol <name>     # declarations with this exact name
+node bin/orca-sonar.ts usage             # how agents used Sonar in the last 30 days
+```
+
+Options: `--root <path>` (default: current folder), `--limit <n>` (default 20),
+`--json`, `--warmup` (for `index`: skip when the background build is switched
+off), `--stdin` (for `status`: one workspace root per line), `-h`/`--help`.
+Orca's own background build runs `index` with `ORCA_SONAR_WARMUP=1` in the
+environment, which works like `--warmup`. Messages follow Orca's language
+setting.
+
+## What gets indexed
+
+Every file git tracks or would track (ignored files such as `node_modules` are
+skipped), except binary files and files larger than 1 MB. Symbols are
+extracted from TypeScript, JavaScript and Python declarations. Each worktree
+of a repository has its own index, so uncommitted changes in one never show up
+in another.
 
 ## Development
 
@@ -20,14 +119,17 @@ npm run typecheck
 npm test
 ```
 
-## Principles
+Screenshots of both panels in every state, at 1440, 768, 390 and 320 px, light
+and dark, Spanish and English. Playwright and the images live outside the
+plugin folder, because Orca hashes and copies everything inside it:
 
-- The index lives in Orca's data folder, never inside a repository, a worktree
-  or a home directory of a repository.
-- Nothing is wired into `.claude/`, `.mcp.json`, `.gitignore`, `AGENTS.md`,
-  `CLAUDE.md` or git configuration and hooks of any repository.
-- User-facing strings are available in Spanish and English, following Orca's
-  language setting.
+```sh
+npm --prefix ../.orca-sonar-deps install playwright@1.59.1   # once
+npm run screenshots                                          # PNGs in ../.orca-sonar-screenshots
+```
+
+The script fails when a state does not show its text, shows text it must not,
+scrolls sideways, or a click does not write what the worker expects.
 
 ## License
 
