@@ -9,7 +9,8 @@ test('reads the command, its words and the shared options', () => {
     json: true,
     root: undefined,
     limit: 5,
-    warmup: false
+    warmup: false,
+    stdin: false
   })
 })
 
@@ -20,7 +21,8 @@ test('reads --root and defaults to no command options', () => {
     json: false,
     root: '/work/repo',
     limit: undefined,
-    warmup: false
+    warmup: false,
+    stdin: false
   })
 })
 

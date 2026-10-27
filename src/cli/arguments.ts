@@ -37,6 +37,8 @@ export interface Invocation {
   readonly limit: number | undefined
   /** `index` was started by Orca's background warm-up, which the owner can switch off. */
   readonly warmup: boolean
+  /** For status: read one workspace root per line from standard input. */
+  readonly stdin: boolean
 }
 
 const OPTIONS = {
@@ -44,6 +46,7 @@ const OPTIONS = {
   root: { type: 'string' },
   limit: { type: 'string' },
   warmup: { type: 'boolean', default: false },
+  stdin: { type: 'boolean', default: false },
   help: { type: 'boolean', short: 'h', default: false }
 } as const
 
@@ -78,7 +81,8 @@ export function parseInvocation(argv: readonly string[]): Invocation {
       json: false,
       root: undefined,
       limit: undefined,
-      warmup: false
+      warmup: false,
+      stdin: false
     }
   }
   if (!isCommand(first)) {
@@ -97,6 +101,7 @@ export function parseInvocation(argv: readonly string[]): Invocation {
     json: values.json,
     root: values.root,
     limit: values.limit === undefined ? undefined : Number(values.limit),
-    warmup: values.warmup
+    warmup: values.warmup,
+    stdin: values.stdin
   }
 }

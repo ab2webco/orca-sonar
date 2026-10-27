@@ -128,3 +128,37 @@ test('status in text mode names the counts', async () => {
   assert.equal(status.code, 0)
   assert.match(status.stdout, /1 files, 2 symbols/)
 })
+
+test('status --stdin reports every root it is given, one spawn for many workspaces', async () => {
+  const other = join(base, 'other')
+  mkdirSync(other)
+  writeFileSync(join(other, 'a.ts'), 'export function a() {}\n')
+  const missing = join(base, 'does-not-exist')
+  let stdout = ''
+  const code = await runCli(['status', '--stdin', '--json'], {
+    env: { ORCA_USER_DATA_PATH: userData },
+    platform: process.platform,
+    home: base,
+    cwd: base,
+    systemLocale: 'en-US',
+    stdin: () => Promise.resolve(`${workspace}\r\n${other}\n\n${missing}\n`),
+    stdout: (text) => {
+      stdout += text
+    },
+    stderr: () => undefined
+  })
+
+  const report = JSON.parse(stdout) as {
+    command: string
+    workspaces: { root: string; exists?: boolean; files?: number; error?: string }[]
+  }
+  assert.equal(code, 0)
+  assert.equal(report.command, 'status')
+  assert.deepEqual(
+    report.workspaces.map((entry) => entry.root),
+    [workspace, other, missing]
+  )
+  assert.equal(report.workspaces[0]?.exists, true)
+  assert.equal(report.workspaces[1]?.exists, false)
+  assert.equal(typeof report.workspaces[2]?.error, 'string')
+})
