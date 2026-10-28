@@ -88,6 +88,7 @@ function defaultResponse(
     return ok(JSON.stringify({ command: 'status', workspaces }))
   }
   if (command === 'node' && args.includes('usage')) return ok(JSON.stringify(USAGE))
+  if (command === 'node' && args.includes('prune')) return ok('{"command":"prune","removed":[]}')
   if (command === 'node' && args.includes('index')) return ok('{"command":"index"}')
   throw new Error(`unexpected ${command} ${args.join(' ')}`)
 }
@@ -270,6 +271,72 @@ test('a failing status run is published with its message, not Node warnings', as
 
   assert.equal(stored(state).problem, 'error')
   assert.equal(stored(state).error, 'Sonar failed: disk full')
+})
+
+test('a wake prunes vanished workspaces after the status run, keeping every index it just checked', async () => {
+  const state = fixture()
+
+  await (
+    await workerFor(state).wake({ force: true })
+  ).done
+
+  const commands = state.calls.map((call) => call.args.find((arg) => /^[a-z]+$/.test(arg)))
+  assert.ok(commands.indexOf('prune') > commands.indexOf('status'))
+  const prunes = state.calls.filter((call) => call.args.includes('prune'))
+  assert.equal(prunes.length, 1)
+  assert.deepEqual(prunes[0]?.args, [...CHILD_PERMISSIONS, CLI, 'prune', '--stdin', '--json'])
+  assert.equal(prunes[0].input, `${String(index(120).indexPath)}\n${String(index(0).indexPath)}\n`)
+})
+
+test('when a workspace could not be checked, prune gets no list and keeps every unrecorded index', async () => {
+  const state = fixture()
+  state.respond = (command, args, input) =>
+    command === 'node' && args.includes('status')
+      ? ok(
+          JSON.stringify({
+            command: 'status',
+            workspaces: [
+              { root: SHOP, ...index(120) },
+              { root: BLOG, error: 'permission denied' }
+            ]
+          })
+        )
+      : defaultResponse(command, args, input)
+
+  await (
+    await workerFor(state).wake({ force: true })
+  ).done
+
+  const prune = state.calls.find((call) => call.args.includes('prune'))
+  assert.deepEqual(prune?.args, [...CHILD_PERMISSIONS, CLI, 'prune', '--json'])
+  assert.equal(prune.input, undefined)
+})
+
+test('nothing is pruned when the status run failed, and a failed prune changes no state', async () => {
+  const failedStatus = fixture()
+  failedStatus.respond = (command, args, input) =>
+    command === 'node' && args.includes('status')
+      ? { kind: 'exited', code: 1, stdout: '', stderr: 'Sonar failed: disk full\n' }
+      : defaultResponse(command, args, input)
+  const failedPrune = fixture()
+  failedPrune.respond = (command, args, input) =>
+    command === 'node' && args.includes('prune')
+      ? { kind: 'exited', code: 1, stdout: '', stderr: 'Sonar failed: busy\n' }
+      : defaultResponse(command, args, input)
+
+  await (
+    await workerFor(failedStatus).wake({ force: true })
+  ).done
+  await (
+    await workerFor(failedPrune).wake({ force: true })
+  ).done
+
+  assert.equal(
+    failedStatus.calls.some((call) => call.args.includes('prune')),
+    false
+  )
+  assert.equal(stored(failedPrune).problem, undefined)
+  assert.equal(stored(failedPrune).workspaces.length, 2)
 })
 
 test('an event-driven wake within a minute of the last check spawns nothing', async () => {
