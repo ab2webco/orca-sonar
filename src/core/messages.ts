@@ -36,6 +36,7 @@ const EN = {
   neverIndexed: 'unknown',
   pruned: 'Indexes removed for workspaces that no longer exist: {count} ({size} bytes).',
   prunedNone: 'No index to remove: every indexed workspace still exists.',
+  hookStatus: 'orca-sonar: checking whether Sonar can answer this search',
   usageSummary:
     '{queries} queries in the last 30 days ({find} find, {symbol} symbol), {results} results, {averageMs} ms on average. Estimated saving versus grep: {savedTokens} tokens ({savedBytes} bytes).',
   agentsOff:
@@ -85,6 +86,7 @@ const ES: Record<MessageKey, string> = {
   pruned: 'Índices eliminados de espacios de trabajo que ya no existen: {count} ({size} bytes).',
   prunedNone:
     'Ningún índice por eliminar: todos los espacios de trabajo indexados siguen existiendo.',
+  hookStatus: 'orca-sonar: Sonar revisa si puede responder esta búsqueda',
   usageSummary:
     '{queries} consultas en los últimos 30 días ({find} find, {symbol} symbol), {results} resultados, {averageMs} ms en promedio. Ahorro estimado frente a grep: {savedTokens} tokens ({savedBytes} bytes).',
   agentsOff:
