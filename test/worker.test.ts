@@ -8,6 +8,7 @@ import { createWorker, userDataDirFromPluginRoot, type Host } from '../src/plugi
 const PLUGIN_ROOT = join('/plugins', 'ab2web.orca-sonar', 'a'.repeat(64))
 const CLI = join(PLUGIN_ROOT, 'bin', 'orca-sonar.ts')
 const USER_DATA = '/data/orca'
+const HOME = '/home/ana'
 const SHOP = '/work/shop'
 const BLOG = '/work/blog'
 const NOW = new Date('2026-10-26T10:00:00.000Z')
@@ -68,6 +69,7 @@ interface Fixture {
   readonly settings: Map<string, unknown>
   readonly calls: Call[]
   clock: Date
+  env: Record<string, string>
   /** When set, an `index` run waits for it, so a test can look at the running state. */
   indexGate: Promise<void> | null
   respond: (command: string, args: readonly string[], input: string | undefined) => RunResult
@@ -89,6 +91,7 @@ function defaultResponse(
   }
   if (command === 'node' && args.includes('usage')) return ok(JSON.stringify(USAGE))
   if (command === 'node' && args.includes('prune')) return ok('{"command":"prune","removed":[]}')
+  if (command === 'node' && args.includes('agents')) return ok('{"command":"agents","roots":[]}')
   if (command === 'node' && args.includes('index')) return ok('{"command":"index"}')
   throw new Error(`unexpected ${command} ${args.join(' ')}`)
 }
@@ -101,6 +104,7 @@ function fixture(): Fixture {
     settings,
     calls: [],
     clock: NOW,
+    env: {},
     indexGate: null,
     respond: defaultResponse,
     host: {
@@ -142,7 +146,8 @@ function workerFor(state: Fixture) {
     run,
     pluginRoot: PLUGIN_ROOT,
     userDataDir: USER_DATA,
-    baseEnv: { PATH: '/usr/bin', ELECTRON_RUN_AS_NODE: '1' },
+    home: HOME,
+    baseEnv: { PATH: '/usr/bin', ELECTRON_RUN_AS_NODE: '1', ...state.env },
     now: () => state.clock
   })
 }
@@ -337,6 +342,101 @@ test('nothing is pruned when the status run failed, and a failed prune changes n
   )
   assert.equal(stored(failedPrune).problem, undefined)
   assert.equal(stored(failedPrune).workspaces.length, 2)
+})
+
+/**
+ * Teaching agents about Sonar writes into their config folders, so that child
+ * gets write access to exactly those, on top of Sonar's own data folder.
+ */
+const AGENTS_PERMISSIONS = [
+  '--permission',
+  '--allow-fs-read=*',
+  `--allow-fs-write=${join(USER_DATA, 'plugins-data', 'ab2web.orca-sonar')}`,
+  `--allow-fs-write=${join(HOME, '.claude')}`,
+  `--allow-fs-write=${join(USER_DATA, 'claude-accounts')}`,
+  `--allow-fs-write=${join(HOME, '.codex')}`,
+  '--disable-warning=SecurityWarning'
+]
+
+function agentsCalls(state: Fixture): (readonly string[])[] {
+  return state.calls.filter((call) => call.args.includes('agents')).map((call) => call.args)
+}
+
+test('the first wake of a worker teaches the agents about Sonar, and later wakes do not repeat it', async () => {
+  const state = fixture()
+  const worker = workerFor(state)
+
+  await (
+    await worker.wake({ force: true })
+  ).done
+  state.clock = new Date(NOW.getTime() + 10 * 60_000)
+  await (
+    await worker.wake({ force: true })
+  ).done
+
+  assert.deepEqual(agentsCalls(state), [
+    [...AGENTS_PERMISSIONS, CLI, 'agents', 'install', '--json']
+  ])
+})
+
+test('agent folders named by CLAUDE_CONFIG_DIR and CODEX_HOME get the write access instead', async () => {
+  const state = fixture()
+  state.env = { CLAUDE_CONFIG_DIR: '/cfg/claude', CODEX_HOME: '/cfg/codex' }
+
+  await (
+    await workerFor(state).wake({ force: true })
+  ).done
+
+  const [args] = agentsCalls(state)
+  assert.ok(args)
+  assert.ok(args.includes('--allow-fs-write=/cfg/claude'))
+  assert.ok(args.includes('--allow-fs-write=/cfg/codex'))
+  assert.equal(args.includes(`--allow-fs-write=${join(HOME, '.claude')}`), false)
+})
+
+test('switching agents off takes Sonar out of the agents, and back on puts it in again', async () => {
+  const state = fixture()
+  const worker = workerFor(state)
+  state.storage.set('preferences', { agents: false, warmup: true })
+
+  await (
+    await worker.wake({ force: true })
+  ).done
+  state.storage.set('preferences', { agents: true, warmup: true })
+  await (
+    await worker.wake({ force: true })
+  ).done
+
+  assert.deepEqual(
+    agentsCalls(state).map((args) => args.slice(-3)),
+    [
+      ['agents', 'remove', '--json'],
+      ['agents', 'install', '--json']
+    ]
+  )
+})
+
+test('a failed install is tried again on the next wake and never blocks the status', async () => {
+  const state = fixture()
+  const worker = workerFor(state)
+  state.respond = (command, args, input) =>
+    command === 'node' && args.includes('agents')
+      ? { kind: 'exited', code: 1, stdout: '', stderr: 'EACCES' }
+      : defaultResponse(command, args, input)
+
+  await (
+    await worker.wake({ force: true })
+  ).done
+  state.respond = defaultResponse
+  await (
+    await worker.wake({ force: true })
+  ).done
+  await (
+    await worker.wake({ force: true })
+  ).done
+
+  assert.equal(agentsCalls(state).length, 2)
+  assert.equal(stored(state).workspaces.length, 2)
 })
 
 test('an event-driven wake within a minute of the last check spawns nothing', async () => {
