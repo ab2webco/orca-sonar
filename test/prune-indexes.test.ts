@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync 
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { after, test } from 'node:test'
+import { runCli, type CliContext } from '../src/cli/run.ts'
 import { indexFilePath, pluginDataDir } from '../src/core/index-location.ts'
 import { openIndex } from '../src/core/index-store.ts'
 import { pruneIndexes } from '../src/core/prune-indexes.ts'
@@ -115,4 +116,61 @@ test('files Sonar did not name as an index are never touched', () => {
   assert.deepEqual(pruneIndexes(userData, { keep: new Set() }), [])
   assert.deepEqual(readdirSync(repo).sort(), ['notes.sqlite', 'readme.txt'])
   assert.equal(existsSync(join(data, 'usage.sqlite')), true)
+})
+
+async function prune(
+  userData: string,
+  args: readonly string[],
+  stdin?: string
+): Promise<{ code: number; stdout: string }> {
+  let stdout = ''
+  const context: CliContext = {
+    env: { ORCA_USER_DATA_PATH: userData },
+    platform: process.platform,
+    home: userData,
+    cwd: userData,
+    systemLocale: 'en-US',
+    ...(stdin === undefined ? {} : { stdin: () => Promise.resolve(stdin) }),
+    stdout: (text) => {
+      stdout += text
+    },
+    stderr: () => undefined
+  }
+  const code = await runCli(['prune', ...args], context)
+  return { code, stdout }
+}
+
+test('prune --json lists what it removed, and says so in words without --json', async () => {
+  const { base, userData } = sandbox()
+  const gone = await indexedWorkspace(base, userData, 'blog')
+  rmSync(join(base, 'blog'), { recursive: true })
+
+  const first = await prune(userData, ['--json'])
+  const second = await prune(userData, [])
+
+  assert.equal(first.code, 0)
+  const report = JSON.parse(first.stdout) as { command: string; removed: { root: string }[] }
+  assert.equal(report.command, 'prune')
+  assert.deepEqual(
+    report.removed.map((entry) => entry.root),
+    [gone.root]
+  )
+  assert.equal(second.code, 0)
+  assert.equal(second.stdout, 'No index to remove: every indexed workspace still exists.\n')
+})
+
+test('prune --stdin keeps the live index paths it is given and removes other unrecorded ones', async () => {
+  const { userData } = sandbox()
+  const listed = legacyIndex(userData, 'a'.repeat(16), 'b'.repeat(16))
+  const unlisted = legacyIndex(userData, 'a'.repeat(16), 'c'.repeat(16))
+
+  const result = await prune(userData, ['--stdin'], `${listed}\r\n\n`)
+
+  assert.equal(result.code, 0)
+  assert.match(
+    result.stdout,
+    /^Indexes removed for workspaces that no longer exist: 1 \(\d+ bytes\)\.\n$/
+  )
+  assert.equal(existsSync(unlisted), false)
+  assert.equal(existsSync(listed), true)
 })

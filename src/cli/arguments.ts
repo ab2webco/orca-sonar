@@ -1,7 +1,8 @@
 import { parseArgs } from 'node:util'
 import type { MessageKey, MessageValues } from '../core/messages.ts'
 
-export type Command = 'help' | 'install' | 'index' | 'status' | 'usage' | 'find' | 'symbol'
+export type Command =
+  'help' | 'install' | 'index' | 'status' | 'prune' | 'usage' | 'find' | 'symbol'
 
 export type UsageErrorCode =
   'unknown_command' | 'unknown_option' | 'invalid_limit' | 'query_required'
@@ -37,7 +38,7 @@ export interface Invocation {
   readonly limit: number | undefined
   /** `index` was started by Orca's background warm-up, which the owner can switch off. */
   readonly warmup: boolean
-  /** For status: read one workspace root per line from standard input. */
+  /** For status, one workspace root per line from standard input; for prune, the live index paths. */
   readonly stdin: boolean
 }
 
@@ -50,7 +51,15 @@ const OPTIONS = {
   help: { type: 'boolean', short: 'h', default: false }
 } as const
 
-const COMMANDS: readonly Command[] = ['install', 'index', 'status', 'usage', 'find', 'symbol']
+const COMMANDS: readonly Command[] = [
+  'install',
+  'index',
+  'status',
+  'prune',
+  'usage',
+  'find',
+  'symbol'
+]
 const QUERY_COMMANDS: readonly Command[] = ['find', 'symbol']
 const WHOLE_NUMBER = /^[1-9]\d*$/
 
