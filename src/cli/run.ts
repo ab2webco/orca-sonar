@@ -5,6 +5,7 @@ import { openIndex, type IndexStore } from '../core/index-store.ts'
 import { resolveLocale, type Locale } from '../core/locale.ts'
 import { readPreferences } from '../core/preferences.ts'
 import { pruneIndexes } from '../core/prune-indexes.ts'
+import { runAgents } from './agents.ts'
 import { translate, type MessageKey, type MessageValues } from '../core/messages.ts'
 import { refreshIndex, type RefreshSummary } from '../core/refresh-index.ts'
 import { tryRefreshLock, waitForRefreshLock } from '../core/refresh-lock.ts'
@@ -81,6 +82,11 @@ export async function runCli(argv: readonly string[], context: CliContext): Prom
             savedBytes: totals.savedBytes
           })}\n`
     )
+    return EXIT_OK
+  }
+
+  if (invocation.command === 'agents') {
+    runAgents(invocation, { userDataDir, locale, context })
     return EXIT_OK
   }
 

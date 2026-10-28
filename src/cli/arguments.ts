@@ -2,16 +2,17 @@ import { parseArgs } from 'node:util'
 import type { MessageKey, MessageValues } from '../core/messages.ts'
 
 export type Command =
-  'help' | 'install' | 'index' | 'status' | 'prune' | 'usage' | 'find' | 'symbol'
+  'help' | 'install' | 'index' | 'status' | 'prune' | 'agents' | 'usage' | 'find' | 'symbol'
 
 export type UsageErrorCode =
-  'unknown_command' | 'unknown_option' | 'invalid_limit' | 'query_required'
+  'unknown_command' | 'unknown_option' | 'invalid_limit' | 'query_required' | 'agents_action'
 
 const MESSAGE_KEY_BY_CODE: Record<UsageErrorCode, MessageKey> = {
   unknown_command: 'unknownCommand',
   unknown_option: 'unknownOption',
   invalid_limit: 'invalidLimit',
-  query_required: 'queryRequired'
+  query_required: 'queryRequired',
+  agents_action: 'agentsAction'
 }
 
 /** A mistake in the command line. The CLI reports it and exits with code 2. */
@@ -56,11 +57,13 @@ const COMMANDS: readonly Command[] = [
   'index',
   'status',
   'prune',
+  'agents',
   'usage',
   'find',
   'symbol'
 ]
 const QUERY_COMMANDS: readonly Command[] = ['find', 'symbol']
+const AGENT_ACTIONS: readonly string[] = ['install', 'remove']
 const WHOLE_NUMBER = /^[1-9]\d*$/
 
 function isCommand(value: string): value is Command {
@@ -96,6 +99,9 @@ export function parseInvocation(argv: readonly string[]): Invocation {
   }
   if (!isCommand(first)) {
     throw new UsageError('unknown_command', { command: first })
+  }
+  if (first === 'agents' && !AGENT_ACTIONS.includes(rest[0] ?? '')) {
+    throw new UsageError('agents_action')
   }
   if (QUERY_COMMANDS.includes(first) && rest.length === 0) {
     throw new UsageError('query_required')

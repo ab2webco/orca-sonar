@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { after, test } from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { runCli, type CliContext } from '../src/cli/run.ts'
 import {
   installAgentIntegration,
   removeAgentIntegration,
@@ -212,4 +213,54 @@ test('remove drops the hooks section it created when nothing else is left in it'
   removeAgentIntegration(context)
 
   assert.deepEqual(settingsOf(claude), { model: 'opus' })
+})
+
+async function agents(
+  box: Sandbox,
+  args: readonly string[]
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  let stdout = ''
+  let stderr = ''
+  const context: CliContext = {
+    env: { ORCA_USER_DATA_PATH: box.userData },
+    platform: process.platform,
+    home: box.home,
+    cwd: box.home,
+    systemLocale: 'en-US',
+    stdout: (text) => {
+      stdout += text
+    },
+    stderr: (text) => {
+      stderr += text
+    }
+  }
+  const code = await runCli(['agents', ...args], context)
+  return { code, stdout, stderr }
+}
+
+test('agents install and agents remove report each agent folder, in JSON or in words', async () => {
+  const box = sandbox()
+
+  const installed = await agents(box, ['install', '--json'])
+  assert.equal(installed.code, 0)
+  assert.deepEqual(JSON.parse(installed.stdout), {
+    command: 'agents',
+    action: 'install',
+    roots: [{ agent: 'claude', root: box.claude, outcome: 'installed' }]
+  })
+  const hook = settingsOf(box.claude).hooks?.PreToolUse?.[0]?.hooks[0]
+  assert.equal(hook?.command, process.execPath)
+
+  const removed = await agents(box, ['remove'])
+  assert.equal(removed.code, 0)
+  assert.equal(removed.stdout, `Claude Code at ${box.claude}: removed\n`)
+})
+
+test('agents without install or remove is a usage mistake', async () => {
+  const box = sandbox()
+
+  const result = await agents(box, ['upgrade'])
+
+  assert.equal(result.code, 2)
+  assert.match(result.stderr, /agents install.*agents remove/)
 })
