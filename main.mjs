@@ -18,6 +18,7 @@ export default function activate(orca) {
     userDataDir:
       userDataDirFromPluginRoot(pluginRoot) ??
       resolveUserDataDir(process.env, process.platform, homedir()),
+    home: homedir(),
     baseEnv: process.env,
     now: () => new Date()
   })

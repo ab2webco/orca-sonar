@@ -32,6 +32,8 @@ export interface WorkerOptions {
   readonly pluginRoot: string
   /** Orca's userData folder; the CLI keeps its index and statistics under it. */
   readonly userDataDir: string
+  /** The user's home folder, where Claude Code and Codex keep their configuration. */
+  readonly home: string
   readonly baseEnv: Readonly<Record<string, string | undefined>>
   readonly now: () => Date
 }
@@ -85,6 +87,31 @@ export function cliPermissions(userDataDir: string): readonly string[] {
     '--allow-fs-read=*',
     `--allow-fs-write=${join(userDataDir, 'plugins-data', PLUGIN_IDENTITY)}`,
     '--allow-child-process',
+    '--disable-warning=SecurityWarning'
+  ]
+}
+
+/**
+ * The grants for `agents install|remove`: the same as the CLI's, plus write
+ * access to exactly the folders where Claude Code and Codex look for skills
+ * and hooks, honouring CLAUDE_CONFIG_DIR and CODEX_HOME.
+ */
+export function agentsPermissions(
+  userDataDir: string,
+  home: string,
+  env: Readonly<Record<string, string | undefined>>
+): readonly string[] {
+  const writable = [
+    join(userDataDir, 'plugins-data', PLUGIN_IDENTITY),
+    env.CLAUDE_CONFIG_DIR || join(home, '.claude'),
+    join(userDataDir, 'claude-accounts'),
+    env.CODEX_HOME || join(home, '.codex'),
+    join(userDataDir, 'codex-accounts')
+  ]
+  return [
+    '--permission',
+    '--allow-fs-read=*',
+    ...writable.map((path) => `--allow-fs-write=${path}`),
     '--disable-warning=SecurityWarning'
   ]
 }
@@ -186,6 +213,31 @@ export function createWorker(options: WorkerOptions): Worker {
   }
   const write = (key: string, value: unknown): Promise<unknown> =>
     host.call('storage.set', { key, value })
+
+  /** Whether this worker already put Sonar in the agents (true) or took it out (false). */
+  let agentsApplied: boolean | undefined
+  /**
+   * Teaches Claude Code and Codex about Sonar while the agents switch is on,
+   * and takes that out when it is off. Once per worker: Orca starts a fresh
+   * worker after a plugin update, so the copies follow the installed version.
+   */
+  const applyAgentIntegration = async (): Promise<void> => {
+    const preferences = await read(PREFERENCES_KEY)
+    const enabled = !(isRecord(preferences) && preferences.agents === false)
+    if (agentsApplied === enabled) {
+      return
+    }
+    const permissions = agentsPermissions(userDataDir, options.home, options.baseEnv)
+    const script = join(pluginRoot, 'bin', 'orca-sonar.ts')
+    const result = await run(
+      'node',
+      [...permissions, script, 'agents', enabled ? 'install' : 'remove', '--json'],
+      { env, timeoutMs: STATUS_TIMEOUT_MS }
+    )
+    if (result.kind === 'exited' && result.code === 0) {
+      agentsApplied = enabled
+    }
+  }
 
   let rebuildWrites: Promise<unknown> = Promise.resolve()
   /** Read-modify-write of the rebuild progress, one at a time. */
@@ -361,6 +413,7 @@ export function createWorker(options: WorkerOptions): Worker {
   return {
     wake: async ({ force }) => {
       await mirrorPreferences()
+      await applyAgentIntegration()
       const requested = await takeRequests()
       if (!force && requested.length === 0 && !(await isDue())) {
         return { done: Promise.resolve() }
