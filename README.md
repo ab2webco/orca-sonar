@@ -104,11 +104,13 @@ node bin/orca-sonar.ts index             # bring the index up to date
 node bin/orca-sonar.ts find <words...>   # lines that contain every word
 node bin/orca-sonar.ts symbol <name>     # declarations with this exact name
 node bin/orca-sonar.ts usage             # how agents used Sonar in the last 30 days
+node bin/orca-sonar.ts prune             # delete the indexes of workspaces that no longer exist
 ```
 
 Options: `--root <path>` (default: current folder), `--limit <n>` (default 20),
 `--json`, `--warmup` (for `index`: skip when the background build is switched
-off), `--stdin` (for `status`: one workspace root per line), `-h`/`--help`.
+off), `--stdin` (for `status`: one workspace root per line; for `prune`: the index
+paths of the live workspaces), `-h`/`--help`.
 Orca's own background build runs `index` with `ORCA_SONAR_WARMUP=1` in the
 environment, which works like `--warmup`. Messages follow Orca's language
 setting.
@@ -125,6 +127,16 @@ An index keeps each searchable line's text once, so it takes roughly 1.7 times
 the size of the code it covers (about 210 MB for a 17,000-file, 127 MB
 repository). When an update changes the index format, the old index is deleted
 on first use and rebuilt.
+
+Each index is a SQLite file at
+`<Orca data folder>/plugins-data/ab2web.orca-sonar/index/<repo>/<worktree>.sqlite`,
+where both names are hashes (the data folder is `~/Library/Application Support/orca`
+on macOS, `%APPDATA%\orca` on Windows and `~/.config/orca` on Linux). An index
+records the folder it belongs to, and it does not outlive that folder: each
+time the panels refresh (see _Why the panels wait for activity_), Sonar
+deletes the index of any workspace whose folder no longer exists, such as a
+removed worktree. An index built before 0.2.3 records no folder, so it is
+deleted only when it belongs to none of the worktrees Orca lists.
 
 ## Development
 
