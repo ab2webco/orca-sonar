@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
 import { LINE_SPAN, openIndex, type IndexStore } from '../src/core/index-store.ts'
-import { readIndexedAt, refreshIndex } from '../src/core/refresh-index.ts'
+import { readIndexedAt, readIndexedRoot, refreshIndex } from '../src/core/refresh-index.ts'
 import { findLines, findSymbols } from '../src/core/search.ts'
 import { resolveWorkspace } from '../src/core/workspace.ts'
 
@@ -124,6 +124,14 @@ test('a file that turns binary leaves the index, and its record does not linger 
   unlinkSync(file)
   await refresh()
   assert.deepEqual(index.all("SELECT path FROM skipped_files WHERE path = 'src/turns.ts'"), [])
+})
+
+test('a refresh records which workspace the index belongs to', async () => {
+  const workspace = await resolveWorkspace(root)
+
+  await refreshIndex(index, workspace)
+
+  assert.equal(readIndexedRoot(index), workspace.root)
 })
 
 test('a refresh records when the index was last brought up to date', async () => {

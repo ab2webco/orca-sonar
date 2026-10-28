@@ -15,6 +15,9 @@ const BINARY_PROBE_BYTES = 8000
 /** The `meta` key holding when the index was last brought up to date, as an ISO time. */
 export const INDEXED_AT_KEY = 'indexed_at'
 
+/** The `meta` key holding the workspace root the index belongs to; its file name is only a hash. */
+export const ROOT_KEY = 'root'
+
 export interface RefreshOptions {
   readonly now?: () => Date
 }
@@ -90,9 +93,11 @@ export async function refreshIndex(
   }
 
   const now = options.now ?? (() => new Date())
-  index.run('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)', [
+  index.run('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?), (?, ?)', [
     INDEXED_AT_KEY,
-    now().toISOString()
+    now().toISOString(),
+    ROOT_KEY,
+    workspace.root
   ])
 
   return { indexed, unchanged, removed }
@@ -101,5 +106,11 @@ export async function refreshIndex(
 /** When the index was last brought up to date, or null if it never was. */
 export function readIndexedAt(index: IndexStore): string | null {
   const [row] = index.all('SELECT value FROM meta WHERE key = ?', [INDEXED_AT_KEY])
+  return typeof row?.value === 'string' ? row.value : null
+}
+
+/** The workspace root recorded by the last refresh, or null for an index built before roots were kept. */
+export function readIndexedRoot(index: IndexStore): string | null {
+  const [row] = index.all('SELECT value FROM meta WHERE key = ?', [ROOT_KEY])
   return typeof row?.value === 'string' ? row.value : null
 }
