@@ -85,6 +85,8 @@ test('regular expressions, short words and other commands get no advice', () => 
   assert.equal(hint(data, grep('id')), null)
   assert.equal(hint(data, bash('npm test')), null)
   assert.equal(hint(data, bash('rg "foo(bar"')), null)
+  assert.equal(hint(data, bash('jq . plugins.json | grep -i sonar')), null)
+  assert.equal(hint(data, bash('git log --oneline | rg createWorker')), null)
   assert.equal(hint(data, { tool_name: 'Read', tool_input: { file_path: '/a.ts' } }), null)
 })
 

@@ -54,18 +54,22 @@ function readJson(path) {
   }
 }
 
-/** Splits a shell command into commands, and each into words, honouring quotes. */
+/**
+ * Splits a shell command into commands, and each into words, honouring quotes.
+ * `piped` marks a command that reads the previous one's output through `|`.
+ */
 function shellCommands(text) {
-  const commands = [[]]
+  const commands = [{ words: [], piped: false }]
   let word = null
   let quote = null
   const endWord = () => {
     if (word !== null) {
-      commands[commands.length - 1].push(word)
+      commands[commands.length - 1].words.push(word)
       word = null
     }
   }
-  for (const char of text) {
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index]
     if (quote !== null) {
       if (char === quote) {
         quote = null
@@ -77,8 +81,11 @@ function shellCommands(text) {
       word ??= ''
     } else if (char === ';' || char === '|' || char === '&' || char === '\n') {
       endWord()
-      if (commands[commands.length - 1].length > 0) {
-        commands.push([])
+      const pipe = char === '|' && text[index - 1] !== '|' && text[index + 1] !== '|'
+      if (commands[commands.length - 1].words.length > 0) {
+        commands.push({ words: [], piped: pipe })
+      } else if (pipe) {
+        commands[commands.length - 1].piped = true
       }
     } else if (char === ' ' || char === '\t') {
       endWord()
@@ -92,7 +99,11 @@ function shellCommands(text) {
 
 /** The pattern of the first rg, grep or git grep in a shell command. */
 function shellPattern(command) {
-  for (const words of shellCommands(command)) {
+  for (const { words, piped } of shellCommands(command)) {
+    // A search of another command's output is not a search of the repository.
+    if (piped) {
+      continue
+    }
     let start = -1
     if (SEARCH_COMMANDS.has(words[0])) {
       start = 1
