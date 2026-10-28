@@ -228,6 +228,27 @@ export function createWorker(options: WorkerOptions): Worker {
     }
   }
 
+  /**
+   * Deletes the indexes of workspaces whose folder is gone. Indexes from before
+   * roots were recorded are judged against the live index paths, which are only
+   * passed when every workspace was checked. Best effort: the next check retries.
+   */
+  const pruneIndexes = async (
+    worktrees: readonly LocalWorktree[],
+    statuses: ReadonlyMap<string, IndexSummary | { error: string }>
+  ): Promise<void> => {
+    const live = worktrees.map((worktree) => statuses.get(worktree.root))
+    const indexPaths = live.flatMap((status) =>
+      status === undefined || 'error' in status ? [] : [status.indexPath]
+    )
+    const complete = indexPaths.length === worktrees.length
+    await run('node', [...cli, 'prune', ...(complete ? ['--stdin'] : []), '--json'], {
+      env,
+      timeoutMs: STATUS_TIMEOUT_MS,
+      ...(complete ? { input: indexPaths.map((path) => `${path}\n`).join('') } : {})
+    })
+  }
+
   const mirrorPreferences = async (): Promise<void> => {
     const preferences = await read(PREFERENCES_KEY)
     if (!isRecord(preferences)) {
@@ -284,7 +305,8 @@ export function createWorker(options: WorkerOptions): Worker {
       workspaces
     }
     await write(STATE_KEY, state)
-    if (problem === undefined) {
+    if (problem === undefined && statuses !== null) {
+      await pruneIndexes(list.worktrees, statuses)
       await mirrorUsage()
     }
     return new Set(list.worktrees.map((worktree) => worktree.root))

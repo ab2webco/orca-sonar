@@ -4,6 +4,7 @@ import { readIndexStatus, type IndexStatus } from '../core/index-status.ts'
 import { openIndex, type IndexStore } from '../core/index-store.ts'
 import { resolveLocale, type Locale } from '../core/locale.ts'
 import { readPreferences } from '../core/preferences.ts'
+import { pruneIndexes } from '../core/prune-indexes.ts'
 import { translate, type MessageKey, type MessageValues } from '../core/messages.ts'
 import { refreshIndex, type RefreshSummary } from '../core/refresh-index.ts'
 import { tryRefreshLock, waitForRefreshLock } from '../core/refresh-lock.ts'
@@ -28,7 +29,7 @@ export interface CliContext {
   readonly home: string
   readonly cwd: string
   readonly systemLocale: string
-  /** Standard input, read whole; only `status --stdin` asks for it. */
+  /** Standard input, read whole; only `status --stdin` and `prune --stdin` ask for it. */
   readonly stdin?: () => Promise<string>
   /** Epoch milliseconds; defaults to the system clock. */
   readonly now?: () => number
@@ -83,6 +84,18 @@ export async function runCli(argv: readonly string[], context: CliContext): Prom
     return EXIT_OK
   }
 
+  if (invocation.command === 'prune') {
+    const keep = invocation.stdin ? new Set(nonEmptyLines(await readStdin(context))) : undefined
+    const removed = pruneIndexes(userDataDir, keep === undefined ? {} : { keep })
+    const size = removed.reduce((total, entry) => total + entry.sizeBytes, 0)
+    context.stdout(
+      invocation.json
+        ? `${JSON.stringify({ command: 'prune', removed }, null, 2)}\n`
+        : `${removed.length === 0 ? say('prunedNone') : say('pruned', { count: removed.length, size })}\n`
+    )
+    return EXIT_OK
+  }
+
   const preferences = readPreferences(userDataDir)
   if ((invocation.command === 'find' || invocation.command === 'symbol') && !preferences.agents) {
     context.stderr(`${say('agentsOff')}\n`)
@@ -100,10 +113,7 @@ export async function runCli(argv: readonly string[], context: CliContext): Prom
   }
 
   if (invocation.command === 'status' && invocation.stdin) {
-    const roots = (context.stdin ? await context.stdin() : '')
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
+    const roots = nonEmptyLines(await readStdin(context))
     const workspaces = await Promise.all(roots.map((root) => statusOf(root, userDataDir)))
     const lines = workspaces.map((entry) =>
       'error' in entry
@@ -156,6 +166,17 @@ export async function runCli(argv: readonly string[], context: CliContext): Prom
     context.stderr(`${say(key, { message })}\n`)
     return EXIT_FAILURE
   }
+}
+
+function readStdin(context: CliContext): Promise<string> {
+  return context.stdin ? context.stdin() : Promise.resolve('')
+}
+
+function nonEmptyLines(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
 }
 
 type RootStatus =

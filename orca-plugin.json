@@ -3,7 +3,7 @@
   "id": "orca-sonar",
   "publisher": "ab2web",
   "name": "Sonar",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Fast file and symbol lookup for agents, with an index kept in Orca's data folder and never inside the repository. Switch it on or off for agents, see every workspace's index and how much it saves versus grep.",
   "engines": {
     "orca": ">=1.4.160"
