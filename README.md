@@ -17,8 +17,10 @@ configuration, so `git status` stays the same.
 
 - **Settings → Plugins → Sonar**: two switches and every local workspace's
   index.
-  - _Agents can use Sonar_: when off, `orca sonar find` and `symbol` refuse and
-    tell the agent to use `rg` or `grep`. Indexes and panels keep working.
+  - _Agents can use Sonar_: when on, Claude Code and Codex learn about Sonar
+    (see below). When off, that is taken out again, `orca sonar find` and
+    `symbol` refuse and tell the agent to use `rg` or `grep`. Indexes and panels
+    keep working.
   - _Build the index in the background_: lets Orca index a new worktree as soon
     as it is created, so the first search does not wait. It never runs while
     agents are switched off.
@@ -34,6 +36,32 @@ configuration, so `git status` stays the same.
   any rebuild you queued.
 - **The `orca-sonar` skill**, which tells agents when to use `orca sonar`
   instead of grep, and what to do when it is switched off or missing.
+
+### How agents learn about Sonar
+
+Orca gives a plugin's skill only to an agent that asks for it by name, so on
+its own an agent never finds out Sonar exists. While _Agents can use Sonar_ is
+on, the plugin therefore puts itself where agents look, on macOS, Linux and
+Windows alike:
+
+- **Claude Code**: in `~/.claude` (or `CLAUDE_CONFIG_DIR`) and in every Claude
+  account Orca manages, it copies the skill to `skills/orca-sonar/` and adds one
+  `PreToolUse` hook to `settings.json`. When an agent is about to search for a
+  plain name or plain words with Grep, `rg`, `grep` or `git grep`, the hook
+  tells it the matching `orca sonar` command, once per session. It never blocks
+  a search, and stays silent for regular expressions, for a grep that filters
+  another command's output, and once Sonar is switched off or uninstalled.
+- **Codex**: it copies the skill to `skills/orca-sonar/` in `~/.codex` (or
+  `CODEX_HOME`) and in every Codex account Orca manages.
+
+This happens when the plugin's worker starts, which is on the first agent
+activity after Orca starts or after an update, so the copies follow the
+installed version. Only what Sonar wrote is ever changed: other hooks and
+settings are kept as they are, and a `skills/orca-sonar` folder Sonar did not
+create is left alone. Switching _Agents can use Sonar_ off takes both out
+again, as does `node bin/orca-sonar.ts agents remove`. Orca runs no code when
+a plugin is uninstalled, so switch agents off first if you want the copies
+gone; otherwise the hook stays silent and the skill tells agents to use grep.
 
 Both panels follow Orca's language (Spanish or English) and theme. Because the
 plugin ships a skill, Orca asks for your consent again on every update.
@@ -105,6 +133,8 @@ node bin/orca-sonar.ts find <words...>   # lines that contain every word
 node bin/orca-sonar.ts symbol <name>     # declarations with this exact name
 node bin/orca-sonar.ts usage             # how agents used Sonar in the last 30 days
 node bin/orca-sonar.ts prune             # delete the indexes of workspaces that no longer exist
+node bin/orca-sonar.ts agents install    # teach Claude Code and Codex to use Sonar
+node bin/orca-sonar.ts agents remove     # take that out again
 ```
 
 Options: `--root <path>` (default: current folder), `--limit <n>` (default 20),
