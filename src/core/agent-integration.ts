@@ -60,7 +60,7 @@ interface AgentRoot {
   readonly root: string
 }
 
-/** Claude Code's config folder, every Orca-managed Claude account, then Codex's home. */
+/** Claude Code's config folder and every Orca-managed Claude account, then the same for Codex. */
 function agentRoots(context: IntegrationContext): AgentRoot[] {
   const roots: AgentRoot[] = []
   const claude = context.env.CLAUDE_CONFIG_DIR || join(context.home, '.claude')
@@ -82,6 +82,15 @@ function agentRoots(context: IntegrationContext): AgentRoot[] {
   const codex = context.env.CODEX_HOME || join(context.home, '.codex')
   if (existsSync(codex)) {
     roots.push({ agent: 'codex', root: codex })
+  }
+  const codexAccounts = join(context.userDataDir, 'codex-accounts')
+  if (existsSync(codexAccounts)) {
+    for (const account of readdirSync(codexAccounts, { withFileTypes: true })) {
+      const accountHome = join(codexAccounts, account.name, 'home')
+      if (account.isDirectory() && existsSync(accountHome) && accountHome !== codex) {
+        roots.push({ agent: 'codex', root: accountHome })
+      }
+    }
   }
   return roots
 }

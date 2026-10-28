@@ -105,7 +105,8 @@ export function agentsPermissions(
     join(userDataDir, 'plugins-data', PLUGIN_IDENTITY),
     env.CLAUDE_CONFIG_DIR || join(home, '.claude'),
     join(userDataDir, 'claude-accounts'),
-    env.CODEX_HOME || join(home, '.codex')
+    env.CODEX_HOME || join(home, '.codex'),
+    join(userDataDir, 'codex-accounts')
   ]
   return [
     '--permission',

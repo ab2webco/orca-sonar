@@ -145,6 +145,21 @@ test('every Orca Claude account gets it too, and Codex gets the skill when it is
   assert.equal(existsSync(join(loggedOut, 'skills')), false)
 })
 
+test('Codex homes Orca manages for its Codex accounts get the skill too', () => {
+  const { userData, claude, context } = sandbox()
+  const codexAccount = join(userData, 'codex-accounts', 'c1', 'home')
+  mkdirSync(codexAccount, { recursive: true })
+  mkdirSync(join(userData, 'codex-accounts', 'c2'), { recursive: true })
+
+  const report = installAgentIntegration(context)
+
+  assert.deepEqual(report, [
+    { agent: 'claude', root: claude, outcome: 'installed' },
+    { agent: 'codex', root: codexAccount, outcome: 'installed' }
+  ])
+  assert.ok(existsSync(join(codexAccount, 'skills', 'orca-sonar', 'SKILL.md')))
+})
+
 test('CLAUDE_CONFIG_DIR and CODEX_HOME are honoured, and a missing agent home is left alone', () => {
   const { home, context } = sandbox()
   const custom = join(home, 'custom-claude')

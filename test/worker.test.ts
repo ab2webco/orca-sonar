@@ -355,6 +355,7 @@ const AGENTS_PERMISSIONS = [
   `--allow-fs-write=${join(HOME, '.claude')}`,
   `--allow-fs-write=${join(USER_DATA, 'claude-accounts')}`,
   `--allow-fs-write=${join(HOME, '.codex')}`,
+  `--allow-fs-write=${join(USER_DATA, 'codex-accounts')}`,
   '--disable-warning=SecurityWarning'
 ]
 
